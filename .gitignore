@@ -1,0 +1,114 @@
+# C/C++ compiler and linker outputs
+*.o
+*.obj
+*.d
+*.a
+*.lib
+*.so
+*.so.*
+*.dll
+*.exe
+*.out
+*.elf
+*.axf
+*.map
+*.lst
+*.su
+*.cyclo
+*.gch
+*.pch
+
+# Build directories (STM32CubeIDE, Make, CMake, Ninja)
+build/
+build-*/
+cmake-build-*/
+Debug/
+Release/
+out/
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+install_manifest.txt
+compile_commands.json
+build.ninja
+rules.ninja
+.ninja_deps
+.ninja_log
+
+# Linux kernel module builds (Jetson USB / block device driver)
+*.ko
+*.mod
+*.mod.c
+.*.cmd
+.*.d
+Module.symvers
+modules.order
+.tmp_versions/
+.cache.mk
+
+# STM32CubeIDE / Eclipse workspace state
+# Keep .ioc, .project, .cproject, .settings/ and linker scripts tracked.
+.metadata/
+.recommenders/
+*.launch.bak
+
+# Local editor state; allow shared VS Code configuration
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.swp
+*.swo
+*~
+.gdb_history
+.clangd/
+.cache/
+
+# Generated test, coverage and performance outputs
+*.gcda
+*.gcno
+*.gcov
+*.profraw
+*.profdata
+coverage/
+htmlcov/
+.coverage
+.coverage.*
+
+# Optional Python CLI / test automation
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Put generated NAND images, flash dumps, USB captures and WAF results here.
+# Keep reusable fixtures and reviewed reports outside these root directories.
+# Do not ignore *.bin, *.hex, *.img, *.pcap or *.csv globally.
+/artifacts/
+/test-results/
+/logs/
+/tmp/
+/temp/
+*.log
+
+# Local environment values; allow sanitized configuration templates
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+
+# OS and document temporary files
+.DS_Store
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+~$*
+*.asv
