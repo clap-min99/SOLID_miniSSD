@@ -56,5 +56,3 @@ SOLID_miniSSD/
     ├── gc/                # GC 테스트
     └── integration/       # 통합 테스트
 ```
-
-`docs/`에는 기존 프로젝트 계획서도 보관합니다. 소스가 없는 디렉터리는 `.gitkeep`으로 Git에서 추적하며, 구현 파일을 추가할 때 해당 `.gitkeep`을 삭제해도 됩니다.
