@@ -31,3 +31,28 @@ Jetson Linux                 STM32                         SPI NAND Flash
 ## 개발 계획
 
 NAND 드라이버와 FTL을 구현하고, GC 및 Linux 드라이버를 연동한 뒤 통합 테스트와 성능 검증을 진행할 예정입니다. 빌드 및 실행 방법은 구현이 진행되면서 추가합니다.
+
+## 디렉터리 구조
+
+```text
+SOLID_miniSSD/
+├── README.md
+├── docs/
+│   ├── architecture.md    # 시스템 아키텍처
+│   ├── protocol.md        # 통신 프로토콜
+│   └── ftl-gc-api.md      # FTL / GC 인터페이스
+├── firmware/
+│   ├── host/              # STM32 UART / HIL
+│   ├── nand/              # SPI NAND 드라이버
+│   ├── ftl/               # 페이지 매핑
+│   ├── gc/                # Garbage Collection
+│   └── common/            # 공통 타입 / 인터페이스
+├── linux/
+│   ├── driver/            # Linux 블록 장치 드라이버
+│   └── bridge/            # 사용자 공간 UART 브리지
+└── tests/
+    ├── mock_nand/         # Mock NAND
+    ├── ftl/               # FTL 테스트
+    ├── gc/                # GC 테스트
+    └── integration/       # 통합 테스트
+```
