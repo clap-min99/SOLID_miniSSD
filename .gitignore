@@ -112,3 +112,11 @@ Desktop.ini
 $RECYCLE.BIN/
 ~$*
 *.asv
+
+# Local AI configuration and personal wiring diagrams
+/.ai/
+/docs/Schematic/
+
+# Reference documents and images (case-insensitive extensions)
+*.[pP][dD][fF]
+*.[pP][nN][gG]
