@@ -54,12 +54,10 @@ modules.order
 .recommenders/
 *.launch.bak
 
-# Local editor state; allow shared VS Code configuration
+# Local editor state; allow shared tasks and extension recommendations
 .idea/
 .vscode/*
-!.vscode/settings.json
 !.vscode/tasks.json
-!.vscode/launch.json
 !.vscode/extensions.json
 *.swp
 *.swo
@@ -124,3 +122,8 @@ $RECYCLE.BIN/
 # AI
 PROJECT.md
 AGENTS.md
+
+# Local NAND planning and interface notes
+/docs/NAND_DRIVER_DAILY_PLAN.md
+/docs/NAND_DRIVER_ROADMAP.md
+/docs/TEAM_INTERFACE_CONVENTIONS.md
