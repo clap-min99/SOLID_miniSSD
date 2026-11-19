@@ -120,3 +120,7 @@ $RECYCLE.BIN/
 # Reference documents and images (case-insensitive extensions)
 *.[pP][dD][fF]
 *.[pP][nN][gG]
+
+# AI
+PROJECT.md
+AGENTS.md
