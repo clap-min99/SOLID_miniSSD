@@ -157,17 +157,18 @@ STM32: 수신 → 검증 → FTL 실행 → 응답 전송 완료 → 다음 요�
 - 잘못된 길이·주소·지원하지 않는 명령이 NAND 작업을 유발하지 않도록 합니다.
 - 큰 Linux 요청의 완료는 분할된 요청 결과를 모아 처리합니다. 분할 중 일부가 실패하면 이후 전송을 중단하고 Linux에 오류를 보고합니다. 앞서 성공한 WRITE를 되돌리는 전체 요청 원자성은 보장하지 않습니다. 구체적인 Linux 완료·오류 API와 부분 완료 표현은 TBD입니다.
 
-### 5.3 단일 Page Buffer 제약
+### 5.3 Page Buffer 배치 (2026-11-20 결정)
 
-STM32 SRAM Page Buffer는 초기 **2,048B × 1개**이며 READ·WRITE·GC가 공유합니다.
+Host 데이터와 GC 이동 데이터가 같은 Buffer를 쓰면 WRITE 수신 데이터가 GC Read로 덮어써지므로, **GC 전용 Buffer를 분리**합니다.
 
-| 경로 | Buffer 사용 기준 |
-|---|---|
-| READ | NAND에서 읽은 데이터를 응답 전송이 끝날 때까지 유지 |
-| WRITE | 수신한 2KiB를 Program 처리에서 더 이상 필요하지 않을 때까지 유지 |
-| GC | 이동 중 Buffer를 Host READ/WRITE와 중복 사용하지 않음 |
+| Buffer | 크기 × 개수 | 소유 | 용도 |
+|---|---|---|---|
+| HIL 수신 Buffer | 2,048B × 2 (`HIL_RX_BUFFER_COUNT`) | HIL | Host READ 응답 / WRITE 수신 데이터 |
+| GC Buffer | 2,048B × 1 | FTL 내부 `static` | `ftl_gc_move_one`의 유효 Page 복사 전용 |
 
-WRITE 데이터 수신 후 GC가 같은 Buffer에 데이터를 읽으면 Host 데이터가 덮어써집니다. GC 선실행을 위한 명령/데이터 분리·수신 허가, 또는 유휴 GC와 여유 공간 확보 중 어떤 방식을 사용할지는 TBD입니다. 이는 HIL·FTL·GC가 공동으로 결정해야 하며, 두 번째 Page Buffer를 전제로 해결하지 않습니다.
+- 합계 6KiB. GC Buffer는 FTL 안에만 있으므로 GC 모듈과 HIL은 접근하지 않습니다.
+- WRITE 처리 중 Free Block이 부족하면 FTL이 그 자리에서 GC를 실행합니다. Host 데이터는 HIL Buffer에 남아 있으므로 프로토콜(명령/데이터 분리·수신 허가)은 바꾸지 않습니다.
+- 대신 GC가 실행된 WRITE는 응답이 늦어집니다. GC 1회(Victim 1개)는 SPI 1MHz 기준 최대 약 2초로 추정되며, Host 응답 Timeout은 이를 고려해 정합니다. SPI Clock은 이후 상향 예정입니다.
 
 UART 수신 상태·Header·기타 제어 메모리는 별도 사용이 가능합니다. Timeout이나 수신 오류가 발생해도 진행 중 NAND 작업의 종료를 확인하기 전에 Buffer를 임의 재사용하지 않도록 설계합니다.
 

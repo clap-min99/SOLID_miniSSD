@@ -54,13 +54,12 @@ modules.order
 .recommenders/
 *.launch.bak
 
-# Local editor state; allow shared VS Code configuration
+# Local editor state (VS Code 설정도 팀 공유하지 않음)
 .idea/
-.vscode/*
-!.vscode/settings.json
-!.vscode/tasks.json
-!.vscode/launch.json
-!.vscode/extensions.json
+.vscode/
+
+# 개인 보드 브링업 테스트 코드 (팀 NAND 드라이버는 firmware/nand, tests/nand)
+firmware/bringup/
 *.swp
 *.swo
 *~

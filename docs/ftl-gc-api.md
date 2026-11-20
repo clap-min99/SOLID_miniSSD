@@ -34,8 +34,7 @@
 | Victim 선택 | 회수할 Block 선정 |
 | 유효 Page 식별 | FTL 조회 API로 현재 유효성 확인 |
 | 유효 Page 이동 | FTL 이동 API를 이용해 복사·Mapping 전환 수행 |
-| Block Erase | 이동 완료 후 NAND Driver를 통해 Erase 수행 |
-| Free Block 반환 | Erase 성공을 확인한 뒤 FTL에 반환 요청 |
+| Block 회수 요청 | 이동 완료 후 `ftl_reclaim_block` 호출. Erase·Free 반환·BAD 처리는 FTL이 수행 (2026-11-20 합의) |
 | 실패 처리 | 이동·Erase 실패를 보고하고 잘못된 회수를 방지 |
 
 **Mapping Table의 최종 수정 권한은 FTL에 있습니다.** GC는 L2P 배열·Page State·Block 통계를 직접 수정하지 않습니다. 조회 결과와 FTL API를 통해 작업하며, 새 PPN을 임의로 L2P에 대입하지 않습니다.
@@ -253,7 +252,7 @@ flowchart TB
 | WRITE 데이터 수신 전에 필요한 GC 완료 | 명령과 데이터 사이의 수신 허가 절차·흐름 제어 검토 필요 |
 | 유휴 시점에 GC를 실행하고 쓰기 여유 공간을 선확보 | 충분한 예약 공간과 부족 시 요청 처리 정책 필요 |
 
-두 후보 중 어느 것도 추가 Page Buffer를 기본으로 가정하지 않습니다. UART 제어용 메모리가 두 번째 전체 Page Buffer가 되지 않도록 SRAM 예산을 확인합니다. GC 중 수신·DMA·인터럽트 처리, Command Controller의 조정 API는 TBD입니다.
+**결정 (2026-11-20):** 위 두 후보 대신 GC 전용 Buffer를 분리합니다. HIL 수신 Buffer 2KiB × 2, FTL 내부 GC Buffer 2KiB × 1 (합계 6KiB). WRITE 중 공간이 부족하면 FTL이 즉시 GC를 실행하며 Host 데이터는 HIL Buffer에 보존됩니다. 상세는 [프로토콜 5.3](protocol.md#53-page-buffer-배치-2026-11-20-결정).
 
 ## 5. API 후보
 
@@ -290,7 +289,24 @@ flowchart TB
 
 GC가 받는 정보는 조회용입니다. 수정 가능한 L2P 포인터를 반환하지 않습니다. 원본 PPN이 현재 Mapping과 다르면 오래된 조회 결과로 덮어쓰지 않도록 처리해야 하며, 재조회·취소 방식은 TBD입니다.
 
-GC의 Block Erase는 NAND Driver API를 사용합니다. NAND Driver 함수 이름·Status 전달 형식과 Erase 전 FTL 확인 절차는 TBD입니다.
+GC는 NAND Driver를 직접 호출하지 않습니다. Block Erase는 `ftl_reclaim_block`을 통해 FTL이 수행합니다 (2026-11-20 합의, 5.2.1 참조).
+
+#### 5.2.1 FTL ↔ GC 합의 결과 (2026-11-20, 박수민·이규현)
+
+| 항목 | 결정 |
+|---|---|
+| Block 조회 | `ftl_get_block_info(chip, block, &info)`: 상태·valid 수·invalid 수·erase_count를 복사본으로 반환. FTL이 Block 표를 항상 최신으로 유지 |
+| Block 상태 | FREE / OPEN / CLOSED / BAD / RESERVED |
+| 상태 전이 | FREE →(할당) OPEN →(다 참) CLOSED →(Victim 선택) RESERVED → FREE(Erase 성공) / BAD(Erase 실패) / CLOSED(이동 실패·회수 거부 시 GC가 되돌림) |
+| Free 수 조회 | `ftl_get_free_block_count()`: 전역 FREE Block 수 (OPEN 제외) |
+| 유효 Page 이동 | `ftl_gc_move_one(chip, block, &moved)`: 한 Page씩 이동, `moved = 0`이면 남은 유효 Page 없음. GC는 PPN·LPN을 알지 못함 |
+| 이동 오류 | `ERR_FTL_SRC_READ`(원본 읽기 실패 → GC가 해당 Victim을 skip 목록에 등록) / `ERR_FTL_DST_PROGRAM`, `ERR_FTL_NO_SPACE`(CLOSED 복귀만) |
+| Block 회수 | `ftl_reclaim_block`: Erase 후 FREE 반환, 실패 시 BAD. 유효 Page가 남아 있으면 `ERR_FTL_VALID_REMAINS`로 거부(상태 변경 없음) |
+| PPN → LPN | Victim마다 L2P를 1회 훑어 목록 작성, 이동 직전에 L2P가 아직 그 PPN을 가리키는지 재검증 |
+| 예비 Block | 마지막 Free Block 1개는 GC 전용 (Host 쓰기는 Free ≥ 2일 때만 새 Block 사용), GC 시작은 Free ≤ 2 |
+| Victim 선택 | Greedy: valid 최소 → erase_count 최소 → 번호 최소. CLOSED이고 invalid > 0인 Block만 후보 |
+| 주소 | `block`은 칩 내 절대 Block 번호, `FTL_FIRST_BLOCK = 0`. `ppn_t`는 GC 인터페이스에 쓰지 않으므로 공통 헤더로 옮기지 않음 |
+| GC Buffer | FTL 내부 2KiB × 1 (`protocol.md` 5.3) |
 
 ### 5.3 GC 제어
 
