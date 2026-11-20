@@ -3,7 +3,7 @@
  *
  * 오늘 완료 기준 ②: "Victim Block 선택 단위 테스트 통과"
  *
- * FTL 이 아직 없으므로 ftl_get_block_info() 를 이 파일의 가짜 FTL(표)로 대신한다.
+ * FTL 이 아직 없으므로 ftl_get_block_info() 를 가짜 FTL(fake_ftl.c, 표)로 대신한다.
  * 테스트마다 표에 Block 상태를 적어 두고, gc_select_victim() 이 맞는 Block 을 고르는지 본다.
  */
 #include <stdio.h>
@@ -35,63 +35,19 @@ static const char *g_case = "";
         printf("%s %s\n", (g_fail == before) ? "[ OK ]" : "[FAIL]", #fn);    \
     } while (0)
 
-/* ================================================================ 가짜 FTL */
+/* ================================================================ 가짜 FTL (fake_ftl.c) */
+#include "fake_ftl.h"
 
-static ftl_block_info_t fake_tbl[NAND_MAX_CHIPS][NAND_BLOCKS_PER_CHIP];
-static bool             fake_fail[NAND_MAX_CHIPS][NAND_BLOCKS_PER_CHIP];
-static uint32_t         fake_calls;
-static uint16_t         fake_max_block_seen;
-static uint8_t          fake_max_chip_seen;
-
-ftl_query_result_t ftl_get_block_info(uint8_t chip, uint16_t block, ftl_block_info_t *out)
-{
-    fake_calls++;
-    if (chip > fake_max_chip_seen)   fake_max_chip_seen = chip;
-    if (block > fake_max_block_seen) fake_max_block_seen = block;
-
-    if (chip >= NAND_MAX_CHIPS || block >= NAND_BLOCKS_PER_CHIP || out == NULL) {
-        return FTL_QUERY_ERR;
-    }
-    if (fake_fail[chip][block]) {
-        return FTL_QUERY_ERR;
-    }
-    *out = fake_tbl[chip][block];   /* 복사본만 준다 */
-    return FTL_QUERY_OK;
-}
-
-/* 다 채워진(CLOSED) Block: valid + invalid = 64 */
-static void set_closed(uint8_t c, uint16_t b, uint16_t valid, uint32_t erase)
-{
-    fake_tbl[c][b].state = FTL_BLK_CLOSED;
-    fake_tbl[c][b].valid_pages = valid;
-    fake_tbl[c][b].invalid_pages = (uint16_t)(NAND_PAGES_PER_BLOCK - valid);
-    fake_tbl[c][b].erase_count = erase;
-}
-
-static void set_state(uint8_t c, uint16_t b, ftl_block_state_t s, uint16_t valid, uint16_t invalid)
-{
-    fake_tbl[c][b].state = s;
-    fake_tbl[c][b].valid_pages = valid;
-    fake_tbl[c][b].invalid_pages = invalid;
-    fake_tbl[c][b].erase_count = 0;
-}
-
-/* 모든 관리 Block 을 "꽉 찬 유효 데이터"(회수 이득 0)로 채운다 */
-static void fill_all_full_valid(void)
-{
-    for (uint8_t c = 0; c < NAND_MAX_CHIPS; c++)
-        for (uint16_t b = 0; b < NAND_BLOCKS_PER_CHIP; b++)
-            set_closed(c, b, 64, 0);
-}
+#define fake_fail           fake_query_fail
+#define fake_calls          fake_info_calls
+#define set_closed          fake_set_closed
+#define set_state           fake_set_state
+#define fill_all_full_valid fake_fill_all_full_valid
 
 static void setup(void)
 {
-    memset(fake_tbl, 0, sizeof(fake_tbl));      /* 전부 FREE, valid 0 */
-    memset(fake_fail, 0, sizeof(fake_fail));
-    fake_calls = 0;
-    fake_max_block_seen = 0;
-    fake_max_chip_seen = 0;
-    gc_init(NULL);                              /* 8칩 × 24블록, 임계값 2 */
+    fake_ftl_reset();                           /* 전부 FREE */
+    gc_init(NULL);                              /* 8칩 × 24블록(시작 0), 임계값 2 */
 }
 
 static gc_victim_t v;
@@ -288,6 +244,29 @@ static void test_smaller_config(void)
     CHECK_EQ(fake_calls, 2 * 4);
 }
 
+/* 관리 영역 시작 Block 이 0 이 아니어도 그 범위(first ~ first+24)만 본다 (FTL_FIRST_BLOCK 대비) */
+static void test_first_block_offset(void)
+{
+    gc_config_t c = gc_default_config();
+    CHECK_EQ(c.first_block, 0);                 /* 합의: FTL_FIRST_BLOCK = 0 */
+    c.first_block = 10;
+    CHECK_EQ(gc_init(&c), GC_OK);
+
+    fill_all_full_valid();
+    set_closed(0, 9, 0, 0);     /* 범위 앞 → 무시 */
+    set_closed(0, 34, 0, 0);    /* 범위 뒤(10+24=34) → 무시 */
+    set_closed(3, 33, 5, 0);    /* ← 정답: 범위 마지막 블록 */
+    set_closed(2, 10, 6, 0);
+
+    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(v.chip, 3);
+    CHECK_EQ(v.block, 33);
+    CHECK_EQ(fake_calls, 8 * 24);
+
+    c.first_block = 1010;       /* 1010 + 24 > 1024 → 거부 */
+    CHECK_EQ(gc_init(&c), ERR_GC_INVALID_ARG);
+}
+
 /* GC 는 FTL 표를 수정하지 않는다 (조회 전용) */
 static void test_does_not_modify_ftl(void)
 {
@@ -362,6 +341,7 @@ int main(void)
     RUN(test_query_failure_skipped);
     RUN(test_scans_exact_managed_area);
     RUN(test_smaller_config);
+    RUN(test_first_block_offset);
     RUN(test_does_not_modify_ftl);
     RUN(test_random_matches_reference);
 
