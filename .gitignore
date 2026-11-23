@@ -126,6 +126,7 @@ PROJECT.md
 AGENTS.md
 
 # NAND documents
+/firmware/nand/W25N01GV-datasheet-reference.md
 /docs/NAND_DRIVER_DAILY_PLAN.md
 /docs/NAND_DRIVER_ROADMAP.md
 /docs/TEAM_INTERFACE_CONVENTIONS.md
