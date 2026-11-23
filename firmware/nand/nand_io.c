@@ -101,7 +101,7 @@ nand_result_t nand_read_page(nand_addr_t addr, uint8_t *buffer, nand_ecc_t *ecc)
     if (result != NAND_OK)
         return result;
 
-    // BUSY가 풀린 뒤 
+    // BUSY가 풀린 뒤
     result = nand_wait_ready(cs);
     if (result != NAND_OK)
         return result;
@@ -134,4 +134,61 @@ nand_result_t nand_read_page(nand_addr_t addr, uint8_t *buffer, nand_ecc_t *ecc)
     };
 
     return nand_transfer(cs, read_data, sizeof(read_data), buffer, NAND_PAGE_SIZE);
+}
+
+// 물리 블록 하나의 첫 페이지에서 공장 배드 블록 마커를 검사
+nand_result_t nand_is_factory_bad_block(uint8_t chip, uint16_t block, bool *is_bad)
+{
+    if (chip >= NAND_MAX_CHIPS || block >= NAND_BLOCKS_PER_CHIP || is_bad == NULL)
+        return NAND_ERR_INVALID_ARG;
+
+    // 칩 선택 후 이전 NAND 작업이 끝날 때까지 대기
+    nand_cs_t cs = nand_chip_select(chip);
+    nand_result_t result = nand_wait_ready(cs);
+    if (result != NAND_OK)
+        return result;
+
+    // 블록의 첫 페이지를 13h로 내부 버퍼에 로드
+    const uint16_t row = (uint16_t)(block * NAND_PAGES_PER_BLOCK);
+    const uint8_t page_data_read[] = {
+        NAND_CMD_PAGE_DATA_READ,
+        0x00,
+        (uint8_t)(row >> 8),
+        (uint8_t)row,
+    };
+
+    result = nand_transfer(cs, page_data_read, sizeof(page_data_read), NULL, 0);
+    if (result != NAND_OK)
+        return result;
+
+    // 첫 페이지가 내부 버퍼에 올라올 때까지 대기
+    result = nand_wait_ready(cs);
+    if (result != NAND_OK)
+        return result;
+
+    // 메인 영역의 첫 바이트로 배드 블록이 확인되면 검사 종료
+    const uint8_t read_main_marker[] = {NAND_CMD_READ_DATA, 0x00, 0x00, 0x00};
+    uint8_t marker;
+    result = nand_transfer(cs, read_main_marker, sizeof(read_main_marker), &marker, 1);
+    if (result != NAND_OK)
+        return result;
+    if (marker != 0xFFu)
+    {
+        *is_bad = true;
+        return NAND_OK;
+    }
+
+    // 스페어 영역은 메인 영역 바로 뒤의 Column 0x0800에서 시작
+    const uint8_t read_spare_marker[] = {
+        NAND_CMD_READ_DATA,
+        (uint8_t)(NAND_PAGE_SIZE >> 8),
+        (uint8_t)NAND_PAGE_SIZE,
+        0x00,
+    };
+    result = nand_transfer(cs, read_spare_marker, sizeof(read_spare_marker), &marker, 1);
+    if (result != NAND_OK)
+        return result;
+
+    *is_bad = marker != 0xFFu;
+    return NAND_OK;
 }
