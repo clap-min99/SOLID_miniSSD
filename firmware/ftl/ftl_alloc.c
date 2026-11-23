@@ -8,6 +8,7 @@ typedef struct {
     uint8_t  state;          /* ftl_block_state_t */
     uint8_t  write_pointer;
     uint8_t  valid_pages;
+    uint8_t  ecc_corrected;  /* 지운 뒤 Correctable ECC 읽기 횟수 (남던 1바이트 사용) */
 } block_t;                   /* 16B × 192 = 3KiB */
 
 static block_t  blocks[BLOCKS_MAX];
@@ -190,4 +191,17 @@ solid_err_t ftl_get_block_info(uint8_t chip, uint16_t block, ftl_block_info_t *o
 uint16_t ftl_get_free_block_count(void)
 {
     return free_count;
+}
+
+uint8_t ftl_block_note_ecc_corrected(ppn_t ppn)
+{
+    uint16_t i;
+    uint8_t page;
+    if (block_count == 0 || !ppn_to_idx(ppn, &i, &page)) {
+        return 0;
+    }
+    if (blocks[i].ecc_corrected < UINT8_MAX) {
+        blocks[i].ecc_corrected++;
+    }
+    return blocks[i].ecc_corrected;
 }

@@ -124,8 +124,17 @@ int main(void)
     program_res = NAND_OK;
 
     /* ECC */
+    /* Correctable ECC: 성공 + 횟수 기록, 같은 Block에서 3번째면 새 Page로 옮김 */
+    assert(ftl_get_ecc_corrected_count() == 0);
+    ppn_t before = ppn_of(5);
     read_ecc = NAND_ECC_CORRECTED;
-    assert(read_is(5, 0xC3));
+    assert(read_is(5, 0xC3) && ppn_of(5) == before);  /* 1번째: 그대로 */
+    assert(read_is(5, 0xC3) && ppn_of(5) == before);  /* 2번째: 그대로 */
+    assert(read_is(5, 0xC3) && ppn_of(5) != before);  /* 3번째: 옮겨짐 */
+    assert(ftl_get_ecc_corrected_count() == 3);
+    read_ecc = NAND_ECC_NO_ERROR;
+    assert(read_is(5, 0xC3));                          /* 옮긴 곳에서도 같은 데이터 */
+    read_ecc = NAND_ECC_CORRECTED;
     read_ecc = NAND_ECC_UNCORRECTABLE;
     assert(ftl_read(5, r) == ERR_NAND_ECC_UNCORRECTABLE);
     read_ecc = NAND_ECC_UNKNOWN;
