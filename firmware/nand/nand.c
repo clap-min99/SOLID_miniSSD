@@ -68,6 +68,28 @@ nand_result_t nand_init(void)
     return NAND_OK;
 }
 
+// JEDEC ID로 확인한 칩을 일반 데이터 영역 읽기에 맞게 설정
+static nand_result_t nand_configure_chip(nand_cs_t cs)
+{
+    // BUSY 해제 대기 후 B0h 설정 레지스터 읽기
+    nand_result_t result = nand_wait_ready(cs);
+    if (result != NAND_OK)
+        return result;
+
+    uint8_t configuration;
+    result = nand_get_feature(cs, NAND_REG_CONFIGURATION, &configuration);
+    if (result != NAND_OK)
+        return result;
+
+    // 기존 값에서 BUF=1, ECC-E=1, OTP-E=0으로 설정값 계산
+    uint8_t desired = (uint8_t)((configuration | 0x18u) & ~0x40u);
+
+    // 값이 달라졌을 때만 B0h에 쓰고 재조회로 확인
+    if (desired == configuration)
+        return NAND_OK;
+    return nand_write_configuration(cs, desired);
+}
+
 // 지정한 NAND 칩의 JEDEC ID를 읽어 지원 모델인지 확인
 // 오류 처리 순서: 인자 검사 -> 초기화 검사 -> SPI 전송 검사 -> JEDEC ID 검사
 nand_result_t nand_probe(
@@ -110,7 +132,7 @@ nand_result_t nand_probe(
         if (jedec_id[0] == expected[0] &&
             jedec_id[1] == expected[1] &&
             jedec_id[2] == expected[2])
-            return NAND_OK;
+            return nand_configure_chip(cs);
     }
 
     // 읽은 ID가 지원 목록에 없음

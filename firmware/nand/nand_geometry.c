@@ -2,10 +2,9 @@
 
 enum
 {
-    NAND_CMD_SET_FEATURE = 0x1F,
+
     NAND_CMD_PAGE_READ = 0x13,
     NAND_CMD_READ_CACHE = 0x03,
-    NAND_REG_CONFIGURATION = 0xB0,
     NAND_CONFIG_OTP_ENABLE = 1u << 6,
     NAND_PARAMETER_PAGE_ROW = 0x01,
     NAND_PARAMETER_COPY_SIZE = 256,
@@ -19,7 +18,7 @@ enum
 };
 
 // NAND 설정 레지스터 B0h에 값을 쓰고 재조회로 확인
-static nand_result_t nand_write_configuration(nand_cs_t cs, uint8_t configuration)
+nand_result_t nand_write_configuration(nand_cs_t cs, uint8_t configuration)
 {
     // §8.2.4, Fig. 8
     // - MOSI 1Fh → B0h → 설정값
