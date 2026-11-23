@@ -124,14 +124,14 @@ timeout:
 enum
 {
     NAND_CMD_GET_FEATURE = 0x0F,
-    NAND_REG_STATUS = 0xC0,
     NAND_STATUS_BUSY = 1u << 0,
     NAND_READY_POLL_LIMIT = 128,
 };
 
-// CS를 LOW로 유지하며 명령 바이트를 보내고 지정한 길이만큼 응답을 수신
-nand_result_t nand_transfer(nand_cs_t cs, const uint8_t *command,
-                            size_t command_size, uint8_t *data, size_t data_size)
+// 명령과 데이터를 전송하는 동안 CS를 LOW로 유지
+static nand_result_t nand_transaction(nand_cs_t cs, const uint8_t *command,
+                                      size_t command_size, const uint8_t *tx,
+                                      size_t tx_size, uint8_t *rx, size_t rx_size)
 {
     // CS LOW
     GPIO_BSRR(cs.port) = 1u << (cs.pin + 16u);
@@ -143,13 +143,20 @@ nand_result_t nand_transfer(nand_cs_t cs, const uint8_t *command,
             goto timeout;
     }
 
+    // 필요한 만큼 데이터 송신
+    for (size_t i = 0; i < tx_size; ++i)
+    {
+        if (spi_transfer(tx[i]) < 0)
+            goto timeout;
+    }
+
     // 필요한 만큼 응답 수신
-    for (size_t i = 0; i < data_size; ++i)
+    for (size_t i = 0; i < rx_size; ++i)
     {
         int value = spi_transfer(0x00);
         if (value < 0)
             goto timeout;
-        data[i] = (uint8_t)value;
+        rx[i] = (uint8_t)value;
     }
 
     GPIO_BSRR(cs.port) = 1u << cs.pin;
@@ -158,6 +165,18 @@ nand_result_t nand_transfer(nand_cs_t cs, const uint8_t *command,
 timeout:
     GPIO_BSRR(cs.port) = 1u << cs.pin;
     return NAND_ERR_TIMEOUT;
+}
+
+nand_result_t nand_transfer(nand_cs_t cs, const uint8_t *command,
+                            size_t command_size, uint8_t *data, size_t data_size)
+{
+    return nand_transaction(cs, command, command_size, NULL, 0, data, data_size);
+}
+
+nand_result_t nand_transfer_write(nand_cs_t cs, const uint8_t *command,
+                                  size_t command_size, const uint8_t *data, size_t data_size)
+{
+    return nand_transaction(cs, command, command_size, data, data_size, NULL, 0);
 }
 
 // 지정한 NAND 레지스터에서 값 1바이트를 읽음

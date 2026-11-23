@@ -5,6 +5,8 @@
 
 #include <stddef.h>
 
+enum { NAND_REG_STATUS = 0xC0 };
+
 typedef struct
 {
     uint8_t port;
@@ -15,6 +17,9 @@ typedef struct
 nand_cs_t nand_chip_select(uint8_t chip);
 nand_result_t nand_transfer(nand_cs_t cs, const uint8_t *command,
                             size_t command_size, uint8_t *data, size_t data_size);
+/* Send the command and payload while keeping the chip selected. */
+nand_result_t nand_transfer_write(nand_cs_t cs, const uint8_t *command,
+                                  size_t command_size, const uint8_t *data, size_t data_size);
 nand_result_t nand_get_feature(nand_cs_t cs, uint8_t address, uint8_t *value);
 nand_result_t nand_wait_ready(nand_cs_t cs);
 
