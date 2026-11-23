@@ -9,12 +9,23 @@ HEADERS = $(wildcard $(ROOT)/firmware/ftl/*.h $(ROOT)/firmware/common/*.h)
 
 .PHONY: test
 
-test: build/test_ftl_map
+test: build/test_ftl_map build/test_ftl_alloc build/test_ftl
 	build/test_ftl_map
+	build/test_ftl_alloc
+	build/test_ftl
 
-# ponytail: 테스트 파일이 늘면 이 규칙을 복사하거나 패턴 규칙으로 일반화
 build/test_ftl_map: test_ftl_map.c $(FTL_SRC) $(HEADERS) | build
 	$(CC) $(CFLAGS) test_ftl_map.c $(FTL_SRC) -o $@
+
+# 가짜 NAND 함수(nand_is_factory_bad_block, nand_erase_block)는 test_ftl_alloc.c 안에 있음
+ALLOC_SRC = $(ROOT)/firmware/ftl/address_mapper.c $(ROOT)/firmware/ftl/ftl_alloc.c
+build/test_ftl_alloc: test_ftl_alloc.c $(ALLOC_SRC) $(HEADERS) | build
+	$(CC) $(CFLAGS) test_ftl_alloc.c $(ALLOC_SRC) -o $@
+
+# 가짜 NAND(메모리 배열)는 test_ftl.c 안에 있음
+FTL_ALL = $(FTL_SRC) $(ROOT)/firmware/ftl/ftl_alloc.c $(ROOT)/firmware/ftl/ftl.c
+build/test_ftl: test_ftl.c $(FTL_ALL) $(HEADERS) | build
+	$(CC) $(CFLAGS) test_ftl.c $(FTL_ALL) -o $@
 
 build:
 	mkdir build

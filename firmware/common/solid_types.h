@@ -34,16 +34,17 @@ typedef enum {
     ERR_GC_NOT_INITIALIZED    = 0x21,
     ERR_GC_NO_SPACE           = 0x22, /* 회수할 Victim 없음 (후보 전부 skip 포함) */
     ERR_GC_REENTRANT          = 0x23, /* GC 실행 중 GC 재호출 (중첩 금지) */
+    ERR_GC_INTERNAL           = 0x2F, /* GC 내부 불변식 깨짐 (예: 한 Block에서 64 Page 넘게 이동) */
 
     /* NAND (nand_result_t를 상위로 올릴 때) */
-    ERR_NAND_NOT_READY        = 0x30, /* NAND_ERR_NOT_INITIALIZED */
+    ERR_NAND_NOT_INITIALIZED  = 0x30, /* 드라이버 초기화 전 */
     ERR_NAND_NO_DEVICE        = 0x31, /* NAND_ERR_NO_DEVICE: 칩 응답 없음 / ID 불일치 */
     ERR_NAND_IO               = 0x32, /* NAND_ERR_IO: SPI 통신 오류 */
     ERR_NAND_TIMEOUT          = 0x33, /* NAND_ERR_TIMEOUT: BUSY 해제 안 됨 */
     ERR_NAND_WRITE_PROTECTED  = 0x34, /* NAND_ERR_WRITE_PROTECTED: 보호 해제 안 됨 (전원 후 SR1=7C) */
     ERR_NAND_PROGRAM_FAIL     = 0x35, /* NAND_ERR_PROGRAM_FAIL */
     ERR_NAND_ERASE_FAIL       = 0x36, /* NAND_ERR_ERASE_FAIL: 해당 Block은 BAD 처리됨 */
-    ERR_NAND_ECC              = 0x37, /* NAND_ERR_ECC_UNCORRECTABLE */
+    ERR_NAND_ECC_UNCORRECTABLE = 0x37, /* 정정 불가 ECC */
     ERR_NAND_BAD_BLOCK        = 0x38  /* Bad Block 접근 */
 } solid_err_t;
 

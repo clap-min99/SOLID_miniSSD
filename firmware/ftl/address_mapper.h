@@ -2,6 +2,7 @@
 #define SOLID_ADDRESS_MAPPER_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "nand.h"
 

@@ -102,14 +102,15 @@ addr_to_ppn(addr) → ppn
 | `ERR_GC_NOT_INITIALIZED` | 0x21 | `gc_init` 전 | GC | X | - |
 | `ERR_GC_NO_SPACE` | 0x22 | 회수할 Victim 없음 (후보 전부 skip 포함) | GC | X (FTL이 `ERR_FTL_NO_SPACE`로 올림) | - |
 | `ERR_GC_REENTRANT` | 0x23 | GC 중 GC 재호출 (중첩 금지) | GC | X | - |
-| `ERR_NAND_NOT_READY` | 0x30 | 드라이버 초기화 전 | NAND | O | 장치 오류 |
+| `ERR_GC_INTERNAL` | 0x2F | GC 내부 불변식 깨짐 (예: 한 Block에서 64 Page 넘게 이동) | GC | X | - |
+| `ERR_NAND_NOT_INITIALIZED` | 0x30 | 드라이버 초기화 전 | NAND | O | 장치 오류 |
 | `ERR_NAND_NO_DEVICE` | 0x31 | 칩 응답 없음 / ID 불일치 | NAND | O | 장치 오류 |
 | `ERR_NAND_IO` | 0x32 | SPI 통신 오류 | NAND | O | 재시도 가능 |
 | `ERR_NAND_TIMEOUT` | 0x33 | BUSY 해제 안 됨 | NAND | O | 재시도 가능 (`BLK_STS_TIMEOUT`) |
 | `ERR_NAND_WRITE_PROTECTED` | 0x34 | 쓰기 보호 해제 안 됨 | NAND | O | 장치 오류 |
 | `ERR_NAND_PROGRAM_FAIL` | 0x35 | Program 실패 (FTL 재시도 후에도) | NAND | O | 매체 오류 (`BLK_STS_MEDIUM`) |
 | `ERR_NAND_ERASE_FAIL` | 0x36 | Erase 실패 (Block은 BAD 처리) | NAND | X (GC 내부) | - |
-| `ERR_NAND_ECC` | 0x37 | 정정 불가 ECC | NAND | O | 매체 오류 (`BLK_STS_MEDIUM`) |
+| `ERR_NAND_ECC_UNCORRECTABLE` | 0x37 | 정정 불가 ECC | NAND | O | 매체 오류 (`BLK_STS_MEDIUM`) |
 | `ERR_NAND_BAD_BLOCK` | 0x38 | Bad Block 접근 | NAND | X (FTL이 할당 제외) | - |
 
 - **NAND 이름 규칙:** 드라이버(`nand.h`)는 `NAND_ERR_*`를 그대로 쓰고, FTL이 상위로 올릴 때 `ERR_NAND_*`로 바꾼다. `NAND_ERR_INVALID_ARG`는 FTL이 잘못된 주소를 넘긴 버그이므로 `ERR_FTL_INTERNAL`로 바꾼다.
@@ -129,7 +130,7 @@ addr_to_ppn(addr) → ppn
 | `ERR_NAND_ERASE_FAIL` | Erase 실패 (FTL이 BAD 처리) | 다음 Victim으로 진행 |
 | `ERR_FTL_BAD_STATE` / `RANGE` / `INVALID_ARG` / `INTERNAL` | 호출 순서·인자 버그 | GC 중단 + 위로 전달 |
 | `ERR_FTL_NOT_READY` | FTL 초기화 전 | GC 중단 + 위로 전달 |
-| `ERR_NAND_IO` / `TIMEOUT` / `NO_DEVICE` / `NOT_READY` / `WRITE_PROTECTED` | 장치 문제 | GC 중단 + 그대로 위로 전달 |
+| `ERR_NAND_IO` / `TIMEOUT` / `NO_DEVICE` / `NOT_INITIALIZED` / `WRITE_PROTECTED` | 장치 문제 | GC 중단 + 그대로 위로 전달 |
 
 #### GC가 돌려주는 결과
 
@@ -138,6 +139,10 @@ addr_to_ppn(addr) → ppn
 | `ERR_GC_NO_SPACE` | 회수할 Victim 없음 (후보 전부 건너뜀 포함) | FTL이 Host WRITE에 `ERR_FTL_NO_SPACE`로 전달 |
 | `ERR_GC_REENTRANT` | GC 중 GC 재호출 | 버그 |
 | `ERR_GC_INVALID_ARG` / `ERR_GC_NOT_INITIALIZED` | 잘못된 인자 / 초기화 전 | 버그 |
+| `ERR_GC_INTERNAL` | 불변식 깨짐 (예: 한 Block에서 64 Page 넘게 이동) | 버그 |
+
+- GC 전용 실패 코드는 따로 두지 않는다. 이동 실패는 `ERR_FTL_SRC_READ` / `ERR_FTL_DST_PROGRAM`, Erase 실패는 `ERR_NAND_ERASE_FAIL`을 GC가 그대로 돌려준다. FTL(WRITE 경로)은 이 코드를 받으면 GC를 다시 시도하고(건너뛴 Victim은 제외), 끝내 공간을 못 만들면 Host에 `ERR_FTL_NO_SPACE`를 돌려준다. 이 내부 코드들은 Host까지 가지 않는다.
+- Mock NAND의 규칙 위반(범위 밖 주소, NULL 버퍼, 재프로그램)은 `nand.h`의 `NAND_ERR_INVALID_ARG`로 충분하다. FTL이 받으면 FTL 버그이므로 `ERR_FTL_INTERNAL`로 바꾼다.
 
 #### 규칙
 
