@@ -59,6 +59,8 @@ modules.order
 .vscode/*
 !.vscode/tasks.json
 !.vscode/extensions.json
+# 개인 보드 브링업 테스트 코드 (팀 NAND 드라이버는 firmware/nand, tests/nand)
+firmware/bringup/
 *.swp
 *.swo
 *~

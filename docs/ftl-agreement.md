@@ -54,6 +54,8 @@ addr_to_ppn(addr) → ppn
 
 참고: W25N01GV는 칩당 1,024 Block, Block당 64 Page
 
+**결정 (2026-11-20):** 관리 영역 시작 Block `FTL_FIRST_BLOCK = 0`. FTL·GC 인터페이스의 `block`은 칩 내 절대 Block 번호. 공장 Bad Block은 초기화 때 `nand_is_factory_bad_block`으로 검사해 BAD 표시
+
 ## 4. `nand_*` 헤더 계약 + 오류 코드
 
 ### 4-1. 함수
@@ -75,21 +77,72 @@ addr_to_ppn(addr) → ppn
 
 > Mock NAND와 실제 드라이버가 **같은 헤더**를 구현해야 서로 갈아 끼울 수 있음
 
-### 4-2. 오류 코드 (초안)
+### 4-2. 오류 코드
 
-| 코드 | 의미 | 주 발생 위치 |
+정의: `firmware/common/solid_types.h`의 `solid_err_t`. 값은 로그·Host 전달에 쓰이므로 고정하고, 새 코드는 각 구간 끝에 추가한다.
+
+| 코드 | 값 | 의미 | 발생 | Host까지 | Jetson 처리 (제안) |
+|---|---|---|---|---|---|
+| `SOLID_OK` | 0x00 | 성공 | 공통 | O | 성공 |
+| `ERR_FTL_INVALID_ARG` | 0x10 | 잘못된 인자 (호출 측 버그) | FTL | O | 실패, 재시도 X |
+| `ERR_FTL_RANGE` | 0x11 | LPN / chip / block 범위 밖 | FTL | O | 실패, 재시도 X |
+| `ERR_FTL_NOT_READY` | 0x12 | `ftl_init` 완료 전 | FTL | O | 잠시 후 재시도 |
+| `ERR_FTL_UNMAPPED` | 0x13 | 쓴 적 없는 LPN 읽기 | FTL | O | UNMAPPED READ 정책에 따름 (미정) |
+| `ERR_FTL_NO_SPACE` | 0x14 | GC를 해도 빈 Page 없음 | FTL | O | 공간 부족 (`BLK_STS_NOSPC`) |
+| `ERR_FTL_BAD_STATE` | 0x15 | Block 상태가 요청과 안 맞음 | FTL→GC | X | - |
+| `ERR_FTL_SRC_READ` | 0x16 | GC 이동: 원본 읽기 실패 | FTL→GC | X | - |
+| `ERR_FTL_DST_PROGRAM` | 0x17 | GC 이동: 목적지 Program 실패 | FTL→GC | X | - |
+| `ERR_FTL_VALID_REMAINS` | 0x18 | 유효 Page가 남아 Erase 거부 | FTL→GC | X | - |
+| `ERR_FTL_NOT_SUPPORTED` | 0x19 | 미구현 기능 (예: 영속화 전 FLUSH) | FTL | O | 지원 안 함 (`BLK_STS_NOTSUPP`) |
+| `ERR_FTL_FLUSH_FAIL` | 0x1A | 메타데이터 저장 실패 | FTL | O | FLUSH 실패 보고 |
+| `ERR_FTL_NO_META` | 0x1B | 저장된 메타데이터 없음 (새 장치) | FTL | O (GET_INFO) | Format 필요 |
+| `ERR_FTL_META_CORRUPT` | 0x1C | 메타데이터 손상·구성 불일치 | FTL | O (GET_INFO) | 장치 오류 |
+| `ERR_FTL_INTERNAL` | 0x1F | 내부 불변식 깨짐 (버그) | FTL | O | 장치 오류 (`BLK_STS_IOERR`) |
+| `ERR_GC_INVALID_ARG` | 0x20 | 잘못된 인자 | GC | X | - |
+| `ERR_GC_NOT_INITIALIZED` | 0x21 | `gc_init` 전 | GC | X | - |
+| `ERR_GC_NO_SPACE` | 0x22 | 회수할 Victim 없음 (후보 전부 skip 포함) | GC | X (FTL이 `ERR_FTL_NO_SPACE`로 올림) | - |
+| `ERR_GC_REENTRANT` | 0x23 | GC 중 GC 재호출 (중첩 금지) | GC | X | - |
+| `ERR_NAND_NOT_READY` | 0x30 | 드라이버 초기화 전 | NAND | O | 장치 오류 |
+| `ERR_NAND_NO_DEVICE` | 0x31 | 칩 응답 없음 / ID 불일치 | NAND | O | 장치 오류 |
+| `ERR_NAND_IO` | 0x32 | SPI 통신 오류 | NAND | O | 재시도 가능 |
+| `ERR_NAND_TIMEOUT` | 0x33 | BUSY 해제 안 됨 | NAND | O | 재시도 가능 (`BLK_STS_TIMEOUT`) |
+| `ERR_NAND_WRITE_PROTECTED` | 0x34 | 쓰기 보호 해제 안 됨 | NAND | O | 장치 오류 |
+| `ERR_NAND_PROGRAM_FAIL` | 0x35 | Program 실패 (FTL 재시도 후에도) | NAND | O | 매체 오류 (`BLK_STS_MEDIUM`) |
+| `ERR_NAND_ERASE_FAIL` | 0x36 | Erase 실패 (Block은 BAD 처리) | NAND | X (GC 내부) | - |
+| `ERR_NAND_ECC` | 0x37 | 정정 불가 ECC | NAND | O | 매체 오류 (`BLK_STS_MEDIUM`) |
+| `ERR_NAND_BAD_BLOCK` | 0x38 | Bad Block 접근 | NAND | X (FTL이 할당 제외) | - |
+
+- **NAND 이름 규칙:** 드라이버(`nand.h`)는 `NAND_ERR_*`를 그대로 쓰고, FTL이 상위로 올릴 때 `ERR_NAND_*`로 바꾼다. `NAND_ERR_INVALID_ARG`는 FTL이 잘못된 주소를 넘긴 버그이므로 `ERR_FTL_INTERNAL`로 바꾼다.
+- **Correctable ECC:** 데이터는 정상이므로 오류가 아니다(`SOLID_OK`). 통계로만 센다.
+- **Host Status 변환은 HIL 담당.** "Jetson 처리"는 제안이며 HIL·Host와 확정한다.
+- **GC 쪽 적용:** `gc.h`의 `gc_result_t`(`GC_OK`, `ERR_GC_*`)를 `solid_err_t`로 바꿔야 한다. 같은 이름이 두 곳에 있으면 함께 include할 때 컴파일 오류가 난다.
+
+#### FTL → GC 결과와 GC 처리
+
+| 코드 | 의미 | GC 처리 |
 |---|---|---|
-| `SOLID_OK` | 성공 | 공통 |
-| `SOLID_ERR_RANGE` | LPN/주소 범위 밖 | FTL |
-| `SOLID_ERR_UNMAPPED` | 매핑 없음 (정책에 따라) | FTL |
-| `SOLID_ERR_NO_SPACE` | 빈 Page / Victim 없음 | FTL / GC |
-| `SOLID_ERR_PROGRAM_FAIL` | Program 실패 | NAND |
-| `SOLID_ERR_ERASE_FAIL` | Erase 실패 | NAND |
-| `SOLID_ERR_ECC` | 읽기 ECC 오류 | NAND |
-| `SOLID_ERR_TIMEOUT` | BUSY Timeout | NAND |
-| `SOLID_ERR_BAD_BLOCK` | Bad Block 접근 | NAND |
+| `SOLID_OK` | 성공 | 계속 진행 |
+| `ERR_FTL_SRC_READ` | 원본 Page ECC 실패 | CLOSED 복귀 + 그 Victim 건너뜀 |
+| `ERR_FTL_DST_PROGRAM` | 목적지 Program 실패 | CLOSED 복귀 |
+| `ERR_FTL_NO_SPACE` | 옮길 빈 공간 없음 | CLOSED 복귀 |
+| `ERR_FTL_VALID_REMAINS` | 유효 Page가 남아 Erase 거부 | CLOSED 복귀 |
+| `ERR_NAND_ERASE_FAIL` | Erase 실패 (FTL이 BAD 처리) | 다음 Victim으로 진행 |
+| `ERR_FTL_BAD_STATE` / `RANGE` / `INVALID_ARG` / `INTERNAL` | 호출 순서·인자 버그 | GC 중단 + 위로 전달 |
+| `ERR_FTL_NOT_READY` | FTL 초기화 전 | GC 중단 + 위로 전달 |
+| `ERR_NAND_IO` / `TIMEOUT` / `NO_DEVICE` / `NOT_READY` / `WRITE_PROTECTED` | 장치 문제 | GC 중단 + 그대로 위로 전달 |
 
-결정할 것: 코드 이름·값, 타입(`enum` vs `int`), Correctable ECC를 오류로 볼지 경고로 볼지
+#### GC가 돌려주는 결과
+
+| 코드 | 의미 | 처리 |
+|---|---|---|
+| `ERR_GC_NO_SPACE` | 회수할 Victim 없음 (후보 전부 건너뜀 포함) | FTL이 Host WRITE에 `ERR_FTL_NO_SPACE`로 전달 |
+| `ERR_GC_REENTRANT` | GC 중 GC 재호출 | 버그 |
+| `ERR_GC_INVALID_ARG` / `ERR_GC_NOT_INITIALIZED` | 잘못된 인자 / 초기화 전 | 버그 |
+
+#### 규칙
+
+- `SRC_READ`는 원본 ECC 실패, `DST_PROGRAM`은 목적지 Program 실패일 때만 쓴다. SPI 오류·타임아웃·칩 없음은 `ERR_NAND_*` 그대로 올려서, 장치 고장이 "공간 부족"으로 바뀌지 않게 한다.
+- Erase 타임아웃은 지워졌는지 모르므로 BAD 처리한다 (GC에는 `ERR_NAND_ERASE_FAIL`로 보임).
 
 ---
 
@@ -97,8 +150,8 @@ addr_to_ppn(addr) → ppn
 
 | # | 항목 | 같이 정할 사람 | 상태 |
 |---|---|---|---|
-| 5 | Page Buffer 소유권 / GC 실행 시점 | FTL · GC · HIL | ☐ |
-| 6 | FTL ↔ GC 호출 방식 | FTL · GC | ☐ |
+| 5 | Page Buffer 소유권 / GC 실행 시점 | FTL · GC · HIL | ☑ |
+| 6 | FTL ↔ GC 호출 방식 | FTL · GC | ☑ |
 
 ### 5. Page Buffer 소유권 / GC 실행 시점
 
@@ -110,12 +163,7 @@ SRAM의 2KiB Page Buffer는 **1개뿐**. WRITE 데이터 수신 후 같은 버�
 | Host WRITE | UART 수신 시작 ~ Program·Mapping 처리 끝 |
 | GC 이동 | 유효 Page Read ~ 목적지 Program·Mapping 끝 |
 
-결정할 것 (택1)
-
-- [ ] **A.** WRITE 데이터를 받기 *전에* 필요한 GC를 끝낸다 (수신 허가 절차 필요)
-- [ ] **B.** 유휴 시점에 GC를 돌려 쓰기 여유 공간을 미리 확보한다 (예약 공간·부족 시 정책 필요)
-
-추가 버퍼는 기본으로 가정하지 않음 (SRAM 128KiB)
+**결정 (2026-11-20):** A·B 대신 **GC 전용 Buffer 분리**. HIL 수신 2KiB × 2 + FTL 내부 GC Buffer 2KiB × 1 (합계 6KiB). WRITE 중 공간이 부족하면 FTL이 바로 GC를 실행하고, Host 데이터는 HIL Buffer에 남아 있으므로 프로토콜은 바꾸지 않음. GC가 끼면 WRITE 응답이 최대 약 2초 늦어질 수 있음(SPI 1MHz 추정) → Host Timeout 확인 필요. 상세: [protocol.md 5.3](protocol.md)
 
 ### 6. FTL ↔ GC 호출 방식
 
@@ -126,11 +174,14 @@ GC는 L2P를 **직접 수정하지 않음**. 수정 권한은 FTL만 가짐.
 | 묶음 | `ftl_move_page(lpn, old_ppn, victim, buf)` 한 번에 할당+Read+Program+remap | GC 단순, FTL 책임 큼 |
 | 단계별 | `ftl_allocate_page` → 직접 Read/Program → `ftl_remap` | 유연, 호출 순서 실수 위험 |
 
-함께 정할 것
+**결정 (2026-11-20):** 묶음 방식. GC는 `ftl_gc_move_one(chip, block, &moved)`로 한 Page씩 옮기고, Erase도 `ftl_reclaim_block`으로 FTL이 수행. GC는 PPN·LPN과 `nand.h`를 직접 쓰지 않음.
 
-- [ ] 유효 Page 열거 방식 (`ftl_get_valid_pages`: 배열 / Iterator / Callback)
-- [ ] 오래된 조회 결과로 덮어쓰지 않기: `ftl_remap`에서 `old_ppn`이 현재 Mapping과 다르면 거절
-- [ ] 중첩 GC 금지 (GC 이동 중 공간 부족으로 GC 재호출 방지)
+- [x] 유효 Page 열거: FTL 내부에서 Victim마다 L2P 1회 스캔 (GC에 노출하지 않음)
+- [x] 오래된 조회 결과로 덮어쓰지 않기: 이동 직전 L2P가 아직 그 PPN을 가리키는지 재검증
+- [x] 공간 확보: 마지막 Free Block 1개는 GC 전용, GC 시작은 Free ≤ 2
+- [x] 오류: `ERR_FTL_SRC_READ` / `ERR_FTL_DST_PROGRAM` / `ERR_FTL_NO_SPACE` / `ERR_FTL_VALID_REMAINS`
+
+전체 표: [ftl-gc-api.md 5.2.1](ftl-gc-api.md)
 
 ---
 
