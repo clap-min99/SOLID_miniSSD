@@ -12,7 +12,7 @@ uint8_t          fake_max_chip_seen;
 char             fake_trace[256];
 
 int          fake_move_fail_at;
-ftl_result_t fake_move_fail_code;
+solid_err_t fake_move_fail_code;
 bool         fake_erase_fail;
 bool         fake_reclaim_force_valid_remains;
 bool         fake_reserve_reject;
@@ -83,17 +83,18 @@ void fake_fill_all_full_valid(void)
 
 /* ================================================================ gc_ftl_if.h 구현 */
 
-ftl_result_t ftl_get_block_info(uint8_t chip, uint16_t block, ftl_block_info_t *out)
+solid_err_t ftl_get_block_info(uint8_t chip, uint16_t block, ftl_block_info_t *out)
 {
     fake_info_calls++;
     if (chip > fake_max_chip_seen)   fake_max_chip_seen = chip;
     if (block > fake_max_block_seen) fake_max_block_seen = block;
 
-    if (bad_addr(chip, block) || out == NULL || fake_query_fail[chip][block]) {
-        return ERR_FTL_INVALID_ARG;
+    if (out == NULL) return ERR_FTL_INVALID_ARG;
+    if (bad_addr(chip, block) || fake_query_fail[chip][block]) {
+        return ERR_FTL_RANGE;
     }
     *out = fake_tbl[chip][block];   /* 복사본만 준다 */
-    return FTL_OK;
+    return SOLID_OK;
 }
 
 uint16_t ftl_get_free_block_count(void)
@@ -105,29 +106,30 @@ uint16_t ftl_get_free_block_count(void)
     return n;
 }
 
-ftl_result_t ftl_reserve_victim(uint8_t chip, uint16_t block)
+solid_err_t ftl_reserve_victim(uint8_t chip, uint16_t block)
 {
     trace('R');
-    if (bad_addr(chip, block)) return ERR_FTL_INVALID_ARG;
+    if (bad_addr(chip, block)) return ERR_FTL_RANGE;
     if (fake_reserve_reject || fake_tbl[chip][block].state != FTL_BLK_CLOSED) {
         return ERR_FTL_BAD_STATE;
     }
     fake_tbl[chip][block].state = FTL_BLK_RESERVED;
-    return FTL_OK;
+    return SOLID_OK;
 }
 
-ftl_result_t ftl_unreserve_victim(uint8_t chip, uint16_t block)
+solid_err_t ftl_unreserve_victim(uint8_t chip, uint16_t block)
 {
     trace('U');
-    if (bad_addr(chip, block)) return ERR_FTL_INVALID_ARG;
+    if (bad_addr(chip, block)) return ERR_FTL_RANGE;
     if (fake_tbl[chip][block].state != FTL_BLK_RESERVED) return ERR_FTL_BAD_STATE;
     fake_tbl[chip][block].state = FTL_BLK_CLOSED;
-    return FTL_OK;
+    return SOLID_OK;
 }
 
-ftl_result_t ftl_gc_move_one(uint8_t chip, uint16_t block, bool *moved)
+solid_err_t ftl_gc_move_one(uint8_t chip, uint16_t block, bool *moved)
 {
-    if (bad_addr(chip, block) || moved == NULL) return ERR_FTL_INVALID_ARG;
+    if (moved == NULL) return ERR_FTL_INVALID_ARG;
+    if (bad_addr(chip, block)) return ERR_FTL_RANGE;
     *moved = false;
     if (fake_on_move != NULL) {
         fake_on_move();
@@ -140,19 +142,19 @@ ftl_result_t ftl_gc_move_one(uint8_t chip, uint16_t block, bool *moved)
         return fake_move_fail_code;    /* 기존 Mapping 유지: valid 수 그대로 */
     }
     if (fake_tbl[chip][block].valid_pages == 0) {
-        return FTL_OK;                 /* 더 옮길 것 없음 */
+        return SOLID_OK;                 /* 더 옮길 것 없음 */
     }
     trace('M');
     fake_tbl[chip][block].valid_pages--;
     fake_tbl[chip][block].invalid_pages++;
     *moved = true;
-    return FTL_OK;
+    return SOLID_OK;
 }
 
-ftl_result_t ftl_reclaim_block(uint8_t chip, uint16_t block)
+solid_err_t ftl_reclaim_block(uint8_t chip, uint16_t block)
 {
     trace('E');
-    if (bad_addr(chip, block)) return ERR_FTL_INVALID_ARG;
+    if (bad_addr(chip, block)) return ERR_FTL_RANGE;
     ftl_block_info_t *t = &fake_tbl[chip][block];
     if (t->state != FTL_BLK_RESERVED) return ERR_FTL_BAD_STATE;
     if (t->valid_pages > 0 || fake_reclaim_force_valid_remains) return ERR_FTL_VALID_REMAINS;
@@ -161,11 +163,11 @@ ftl_result_t ftl_reclaim_block(uint8_t chip, uint16_t block)
     if (fake_erase_fail) {
         fake_erase_fail = false;
         t->state = FTL_BLK_BAD;
-        return ERR_FTL_NAND_ERASE;
+        return ERR_NAND_ERASE_FAIL;
     }
     t->state = FTL_BLK_FREE;
     t->write_pointer = 0;
     t->valid_pages = 0;
     t->invalid_pages = 0;
-    return FTL_OK;
+    return SOLID_OK;
 }

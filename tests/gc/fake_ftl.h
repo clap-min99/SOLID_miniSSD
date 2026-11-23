@@ -25,7 +25,7 @@ extern char     fake_trace[256];
 
 /* 실패 주입 */
 extern int          fake_move_fail_at;     /* n 번째 move 호출에서 실패 (-1 = 없음) */
-extern ftl_result_t fake_move_fail_code;
+extern solid_err_t fake_move_fail_code;
 extern bool         fake_erase_fail;       /* 다음 reclaim 의 Erase 실패 */
 extern bool         fake_reclaim_force_valid_remains;
 extern bool         fake_reserve_reject;

@@ -3,9 +3,10 @@
 #   mingw32-make clean  결과물 삭제
 CC      = gcc
 GC_DIR  = ../../firmware/gc
-CFLAGS  = -std=c11 -Wall -Wextra -O1 -g -I. -I$(GC_DIR) -I../../firmware/common
+CFLAGS  = -std=c11 -Wall -Wextra -O1 -g -I. -I$(GC_DIR) -I../../firmware/common -I../../firmware/ftl
 COMMON  = $(GC_DIR)/gc.c fake_ftl.c
-DEPS    = $(COMMON) fake_ftl.h $(GC_DIR)/gc.h $(GC_DIR)/gc_ftl_if.h ../../firmware/common/nand.h
+DEPS    = $(COMMON) fake_ftl.h $(GC_DIR)/gc.h $(GC_DIR)/gc_ftl_if.h ../../firmware/ftl/ftl_gc.h \
+          ../../firmware/common/solid_types.h ../../firmware/common/nand.h
 
 ifeq ($(OS),Windows_NT)
   EXE = .exe

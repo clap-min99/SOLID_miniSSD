@@ -66,7 +66,7 @@ static void test_init_and_args(void)
     bad.chip_count = 9;
     CHECK_EQ(gc_init(&bad), ERR_GC_INVALID_ARG);
 
-    CHECK_EQ(gc_init(NULL), GC_OK);
+    CHECK_EQ(gc_init(NULL), SOLID_OK);
     CHECK_EQ(gc_select_victim(NULL), ERR_GC_INVALID_ARG);
 }
 
@@ -94,7 +94,7 @@ static void test_picks_min_valid(void)
     set_closed(2, 10, 12, 0);   /* ← 정답 */
     set_closed(5, 1, 30, 0);
 
-    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);
     CHECK_EQ(v.chip, 2);
     CHECK_EQ(v.block, 10);
     CHECK_EQ(v.valid_pages, 12);
@@ -107,7 +107,7 @@ static void test_all_invalid_block_first(void)
     fill_all_full_valid();
     set_closed(1, 1, 5, 0);
     set_closed(6, 20, 0, 0);    /* ← 정답: 옮길 게 없음 */
-    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);
     CHECK_EQ(v.chip, 6);
     CHECK_EQ(v.block, 20);
     CHECK_EQ(v.valid_pages, 0);
@@ -123,7 +123,7 @@ static void test_excludes_non_closed(void)
     set_state(0, 3, FTL_BLK_RESERVED, 0, 64);
     set_closed(4, 4, 50, 0);                    /* ← 정답: 유일한 정상 후보 */
 
-    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);
     CHECK_EQ(v.chip, 4);
     CHECK_EQ(v.block, 4);
 }
@@ -134,7 +134,7 @@ static void test_bad_block_skipped_for_second_best(void)
     fill_all_full_valid();
     set_state(3, 7, FTL_BLK_BAD, 1, 63);
     set_closed(3, 8, 2, 0);     /* ← 정답 */
-    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);
     CHECK_EQ(v.chip, 3);
     CHECK_EQ(v.block, 8);
 }
@@ -146,7 +146,7 @@ static void test_tie_lower_erase_count(void)
     set_closed(0, 5, 20, 9);
     set_closed(1, 5, 20, 3);    /* ← 정답 */
     set_closed(2, 5, 20, 7);
-    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);
     CHECK_EQ(v.chip, 1);
     CHECK_EQ(v.block, 5);
 }
@@ -158,7 +158,7 @@ static void test_tie_lowest_index(void)
     set_closed(3, 2, 20, 4);
     set_closed(1, 9, 20, 4);    /* ← 정답 (chip 1 < 3) */
     set_closed(1, 15, 20, 4);
-    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);
     CHECK_EQ(v.chip, 1);
     CHECK_EQ(v.block, 9);
 
@@ -173,7 +173,7 @@ static void test_valid_beats_erase_count(void)
     fill_all_full_valid();
     set_closed(0, 0, 10, 1000);   /* ← 정답: 많이 지웠어도 valid 가 적음 */
     set_closed(0, 1, 11, 0);
-    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);
     CHECK_EQ(v.block, 0);
 }
 
@@ -206,7 +206,7 @@ static void test_query_failure_skipped(void)
     set_closed(2, 2, 0, 0);
     fake_fail[2][2] = true;     /* 가장 좋아 보이지만 조회 실패 */
     set_closed(2, 3, 30, 0);    /* ← 정답 */
-    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);
     CHECK_EQ(v.chip, 2);
     CHECK_EQ(v.block, 3);
 }
@@ -218,7 +218,7 @@ static void test_scans_exact_managed_area(void)
     set_closed(7, 23, 1, 0);    /* ← 정답: 맨 끝 */
     set_closed(7, 24, 0, 0);    /* 관리 영역 밖 (block 24) → 보면 안 됨 */
 
-    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);
     CHECK_EQ(v.chip, 7);
     CHECK_EQ(v.block, 23);
     CHECK_EQ(fake_calls, 8 * 24);           /* 192 Block 을 정확히 한 번씩 */
@@ -238,7 +238,7 @@ static void test_smaller_config(void)
     set_closed(5, 0, 0, 0);     /* 범위 밖 칩 → 무시 */
     set_closed(1, 3, 33, 0);    /* ← 정답 */
 
-    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);
     CHECK_EQ(v.chip, 1);
     CHECK_EQ(v.block, 3);
     CHECK_EQ(fake_calls, 2 * 4);
@@ -250,7 +250,7 @@ static void test_first_block_offset(void)
     gc_config_t c = gc_default_config();
     CHECK_EQ(c.first_block, 0);                 /* 합의: FTL_FIRST_BLOCK = 0 */
     c.first_block = 10;
-    CHECK_EQ(gc_init(&c), GC_OK);
+    CHECK_EQ(gc_init(&c), SOLID_OK);
 
     fill_all_full_valid();
     set_closed(0, 9, 0, 0);     /* 범위 앞 → 무시 */
@@ -258,7 +258,7 @@ static void test_first_block_offset(void)
     set_closed(3, 33, 5, 0);    /* ← 정답: 범위 마지막 블록 */
     set_closed(2, 10, 6, 0);
 
-    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);
     CHECK_EQ(v.chip, 3);
     CHECK_EQ(v.block, 33);
     CHECK_EQ(fake_calls, 8 * 24);
@@ -312,11 +312,11 @@ static void test_random_matches_reference(void)
                 }
             }
 
-        gc_result_t r = gc_select_victim(&v);
+        solid_err_t r = gc_select_victim(&v);
         if (bc < 0) {
             CHECK_EQ(r, ERR_GC_NO_SPACE);
         } else {
-            CHECK_EQ(r, GC_OK);
+            CHECK_EQ(r, SOLID_OK);
             CHECK_EQ(v.chip, bc);
             CHECK_EQ(v.block, bb);
         }

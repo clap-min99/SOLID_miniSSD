@@ -69,7 +69,7 @@ static gc_stats_t  st;
 static void test_collect_success(void)
 {
     fake_set_closed(2, 5, 3, 7);
-    CHECK_EQ(gc_collect(&v), GC_OK);
+    CHECK_EQ(gc_collect(&v), SOLID_OK);
     CHECK_EQ(v.chip, 2);
     CHECK_EQ(v.block, 5);
     CHECK_EQ(v.valid_pages, 3);
@@ -88,7 +88,7 @@ static void test_collect_success(void)
 static void test_collect_all_invalid(void)
 {
     fake_set_closed(0, 0, 0, 0);
-    CHECK_EQ(gc_collect(NULL), GC_OK);
+    CHECK_EQ(gc_collect(NULL), SOLID_OK);
     CHECK_STR(fake_trace, "RE");
     CHECK_EQ(fake_tbl[0][0].state, FTL_BLK_FREE);
 }
@@ -105,7 +105,7 @@ static void test_move_fail_rolls_back(void)
 {
     fake_set_closed(1, 3, 4, 0);
     fake_move_fail_at = 3;                          /* 2개 옮기고 3번째에서 실패 */
-    CHECK_EQ(gc_collect(&v), ERR_GC_MOVE_FAIL);
+    CHECK_EQ(gc_collect(&v), ERR_FTL_SRC_READ);
     CHECK_STR(fake_trace, "RMMXU");                 /* E(Erase) 없음 */
     CHECK_EQ(fake_tbl[1][3].state, FTL_BLK_CLOSED);
     CHECK_EQ(fake_tbl[1][3].valid_pages, 2);        /* 남은 유효 Page 그대로 */
@@ -121,16 +121,16 @@ static void test_failed_victim_skipped_next_time(void)
     fake_set_closed(1, 3, 4, 0);    /* 1순위 */
     fake_set_closed(4, 4, 10, 0);   /* 2순위 */
     fake_move_fail_at = 1;
-    CHECK_EQ(gc_collect(&v), ERR_GC_MOVE_FAIL);
+    CHECK_EQ(gc_collect(&v), ERR_FTL_SRC_READ);
     CHECK_EQ(v.block, 3);
 
     fake_move_fail_at = -1;
-    CHECK_EQ(gc_collect(&v), GC_OK);
+    CHECK_EQ(gc_collect(&v), SOLID_OK);
     CHECK_EQ(v.chip, 4);                            /* 실패한 1-3 대신 4-4 */
     CHECK_EQ(v.block, 4);
 
     gc_init(NULL);                                  /* init 하면 Skip 목록 초기화 */
-    CHECK_EQ(gc_select_victim(&v), GC_OK);
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);
     CHECK_EQ(v.chip, 1);
     CHECK_EQ(v.block, 3);
 }
@@ -142,37 +142,37 @@ static void test_dst_program_fail_not_skipped(void)
     fake_set_closed(4, 4, 10, 0);   /* 2순위 */
     fake_move_fail_at = 2;
     fake_move_fail_code = ERR_FTL_DST_PROGRAM;
-    CHECK_EQ(gc_collect(&v), ERR_GC_MOVE_FAIL);
+    CHECK_EQ(gc_collect(&v), ERR_FTL_DST_PROGRAM);
     CHECK_STR(fake_trace, "RMXU");
     CHECK_EQ(fake_tbl[1][3].state, FTL_BLK_CLOSED);
 
     fake_move_fail_at = -1;
-    CHECK_EQ(gc_collect(&v), GC_OK);
+    CHECK_EQ(gc_collect(&v), SOLID_OK);
     CHECK_EQ(v.chip, 1);                            /* 같은 Victim 을 다시 골라 성공 */
     CHECK_EQ(v.block, 3);
 }
 
-/* 목적지 공간 없음(NO_SPACE) → ERR_GC_NO_SPACE 로 올라가고 Victim 은 CLOSED 복귀, Skip 안 함 */
+/* 목적지 공간 없음(NO_SPACE) → ERR_FTL_NO_SPACE 를 그대로 돌려주고 Victim 은 CLOSED 복귀, Skip 안 함 */
 static void test_dst_no_space(void)
 {
     fake_set_closed(2, 2, 5, 0);
     fake_move_fail_at = 1;
     fake_move_fail_code = ERR_FTL_NO_SPACE;
-    CHECK_EQ(gc_collect(&v), ERR_GC_NO_SPACE);
+    CHECK_EQ(gc_collect(&v), ERR_FTL_NO_SPACE);
     CHECK_STR(fake_trace, "RXU");
     CHECK_EQ(fake_tbl[2][2].state, FTL_BLK_CLOSED);
 
-    CHECK_EQ(gc_select_victim(&v), GC_OK);          /* 여전히 후보 */
+    CHECK_EQ(gc_select_victim(&v), SOLID_OK);          /* 여전히 후보 */
     CHECK_EQ(v.block, 2);
 }
 
-/* FTL 계약 위반(BAD_STATE 등)은 ERR_GC_FTL */
+/* FTL 계약 위반(BAD_STATE 등)은 원래 코드 그대로 전달 */
 static void test_move_bad_state(void)
 {
     fake_set_closed(0, 4, 3, 0);
     fake_move_fail_at = 1;
     fake_move_fail_code = ERR_FTL_BAD_STATE;
-    CHECK_EQ(gc_collect(&v), ERR_GC_FTL);
+    CHECK_EQ(gc_collect(&v), ERR_FTL_BAD_STATE);
     CHECK_EQ(fake_tbl[0][4].state, FTL_BLK_CLOSED);
 }
 
@@ -185,7 +185,7 @@ static void test_all_candidates_skipped(void)
     fake_move_fail_code = ERR_FTL_SRC_READ;
 
     int rounds = 0;
-    gc_result_t r = GC_OK;
+    solid_err_t r = SOLID_OK;
     while (gc_should_run(ftl_get_free_block_count()) && rounds < 10) {
         r = gc_collect(&v);
         rounds++;
@@ -202,7 +202,7 @@ static void test_erase_fail_marks_bad(void)
 {
     fake_set_closed(3, 1, 2, 0);
     fake_erase_fail = true;
-    CHECK_EQ(gc_collect(&v), ERR_GC_ERASE_FAIL);
+    CHECK_EQ(gc_collect(&v), ERR_NAND_ERASE_FAIL);
     CHECK_STR(fake_trace, "RMME");
     CHECK_EQ(fake_tbl[3][1].state, FTL_BLK_BAD);
 
@@ -219,7 +219,7 @@ static void test_reserve_rejected(void)
 {
     fake_set_closed(0, 2, 1, 0);
     fake_reserve_reject = true;
-    CHECK_EQ(gc_collect(&v), ERR_GC_FTL);
+    CHECK_EQ(gc_collect(&v), ERR_FTL_BAD_STATE);
     CHECK_STR(fake_trace, "R");
     CHECK_EQ(fake_tbl[0][2].state, FTL_BLK_CLOSED);
 }
@@ -229,33 +229,33 @@ static void test_reclaim_valid_remains(void)
 {
     fake_set_closed(0, 6, 1, 0);
     fake_reclaim_force_valid_remains = true;
-    CHECK_EQ(gc_collect(&v), ERR_GC_FTL);
+    CHECK_EQ(gc_collect(&v), ERR_FTL_VALID_REMAINS);
     CHECK_STR(fake_trace, "RMEU");
     CHECK_EQ(fake_tbl[0][6].state, FTL_BLK_CLOSED);
 }
 
 /* GC 실행 중 다시 GC 를 부르면 BUSY (중첩 금지) */
-static gc_result_t nested_res;
+static solid_err_t nested_res;
 static void call_gc_again(void) { nested_res = gc_collect(NULL); }
 
 static void test_nested_gc_rejected(void)
 {
     fake_set_closed(5, 5, 2, 0);
-    nested_res = GC_OK;
+    nested_res = SOLID_OK;
     fake_on_move = call_gc_again;
-    CHECK_EQ(gc_collect(&v), GC_OK);
-    CHECK_EQ(nested_res, ERR_GC_BUSY);
+    CHECK_EQ(gc_collect(&v), SOLID_OK);
+    CHECK_EQ(nested_res, ERR_GC_REENTRANT);
 
     fake_on_move = NULL;            /* 끝난 뒤에는 다시 실행 가능 */
     fake_set_closed(5, 6, 1, 0);
-    CHECK_EQ(gc_collect(&v), GC_OK);
+    CHECK_EQ(gc_collect(&v), SOLID_OK);
 }
 
 /* 이벤트 로그: Victim → 이동 → Erase(Free 수) */
 static void test_event_log(void)
 {
     fake_set_closed(0, 1, 2, 0);
-    CHECK_EQ(gc_collect(&v), GC_OK);
+    CHECK_EQ(gc_collect(&v), SOLID_OK);
     CHECK_EQ(ev_n, 3);
     CHECK_EQ(ev_log[0], GC_EV_VICTIM);
     CHECK_EQ(ev_val[0], 2);
@@ -276,7 +276,7 @@ static void test_repeat_until_enough_free(void)
     uint16_t order[4];
     int n = 0;
     while (gc_should_run(ftl_get_free_block_count()) && n < 4) {
-        if (gc_collect(&v) != GC_OK) break;
+        if (gc_collect(&v) != SOLID_OK) break;
         order[n++] = v.block;
     }
     CHECK_EQ(n, 3);                                 /* Free 0 → 3 이 되면 멈춤 */
@@ -286,6 +286,15 @@ static void test_repeat_until_enough_free(void)
 
     gc_get_stats(&st);
     CHECK_EQ(st.pages_moved, 10 + 30 + 50);
+}
+
+/* FTL 이 64 Page 보다 많이 옮겼다고 하면 불변식 깨짐 → ERR_GC_INTERNAL, Erase 안 함 */
+static void test_move_overflow_internal(void)
+{
+    fake_set_closed(0, 7, 70, 0);   /* 있을 수 없는 valid 70 (가짜 FTL 버그 흉내) */
+    CHECK_EQ(gc_collect(&v), ERR_GC_INTERNAL);
+    CHECK(strchr(fake_trace, 'E') == NULL);         /* Erase 하지 않음 */
+    CHECK_EQ(fake_tbl[0][7].state, FTL_BLK_CLOSED);
 }
 
 /* 초기화 전 */
@@ -315,6 +324,7 @@ int main(void)
     RUN(test_nested_gc_rejected);
     RUN(test_event_log);
     RUN(test_repeat_until_enough_free);
+    RUN(test_move_overflow_internal);
     RUN(test_not_initialized);
 
     printf("----------------------\n");
