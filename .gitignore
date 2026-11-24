@@ -54,10 +54,11 @@ modules.order
 .recommenders/
 *.launch.bak
 
-# Local editor state (VS Code 설정도 팀 공유하지 않음)
+# Local editor state; allow shared tasks and extension recommendations
 .idea/
-.vscode/
-
+.vscode/*
+!.vscode/tasks.json
+!.vscode/extensions.json
 # 개인 보드 브링업 테스트 코드 (팀 NAND 드라이버는 firmware/nand, tests/nand)
 firmware/bringup/
 *.swp
@@ -111,3 +112,21 @@ Desktop.ini
 $RECYCLE.BIN/
 ~$*
 *.asv
+
+# Local AI configuration and personal wiring diagrams
+/.ai/
+/docs/Schematic/
+
+# Reference documents and images (case-insensitive extensions)
+*.[pP][dD][fF]
+*.[pP][nN][gG]
+
+# AI
+PROJECT.md
+AGENTS.md
+
+# NAND documents
+/firmware/nand/W25N01GV-datasheet-reference.md
+/docs/NAND_DRIVER_DAILY_PLAN.md
+/docs/NAND_DRIVER_ROADMAP.md
+/docs/TEAM_INTERFACE_CONVENTIONS.md
