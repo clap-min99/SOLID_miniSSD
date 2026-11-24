@@ -7,7 +7,9 @@ enum
     NAND_CMD_PROGRAM_EXECUTE = 0x10,
     NAND_CMD_READ_DATA = 0x03,
     NAND_CMD_PAGE_DATA_READ = 0x13,
+    NAND_CMD_BLOCK_ERASE = 0xD8,
     NAND_STATUS_WEL = 1u << 1,
+    NAND_STATUS_E_FAIL = 1u << 2,
     NAND_STATUS_P_FAIL = 1u << 3,
     NAND_STATUS_ECC_SHIFT = 4,
     NAND_STATUS_ECC_MASK = 0x03u << NAND_STATUS_ECC_SHIFT,
@@ -73,6 +75,59 @@ nand_result_t nand_program_page(nand_addr_t addr, const uint8_t *buffer)
         return result;
     if ((status & NAND_STATUS_P_FAIL) != 0)
         return NAND_ERR_PROGRAM_FAIL;
+
+    return NAND_OK;
+}
+
+// 지정한 물리 블록 전체를 소거
+nand_result_t nand_erase_block(uint8_t chip, uint16_t block)
+{
+    // 칩을 선택하기 전에 칩 번호와 블록 번호의 범위를 확인
+    if (chip >= NAND_MAX_CHIPS || block >= NAND_BLOCKS_PER_CHIP)
+        return NAND_ERR_INVALID_ARG;
+
+    // 이전 NAND 작업의 BUSY 해제를 기다림
+    nand_cs_t cs = nand_chip_select(chip);
+    nand_result_t result = nand_wait_ready(cs);
+    if (result != NAND_OK)
+        return result;
+
+    // Write Enable(06h)을 전송하고 C0h의 WEL 비트를 확인
+    const uint8_t write_enable = NAND_CMD_WRITE_ENABLE;
+    result = nand_transfer(cs, &write_enable, sizeof(write_enable), NULL, 0);
+    if (result != NAND_OK)
+        return result;
+
+    uint8_t status;
+    result = nand_get_feature(cs, NAND_REG_STATUS, &status);
+    if (result != NAND_OK)
+        return result;
+    if ((status & NAND_STATUS_WEL) == 0)
+        return NAND_ERR_IO;
+
+    // 블록의 첫 페이지 Row를 계산하고 D8h, 더미, Row 상위·하위 바이트를 전송
+    const uint16_t row = (uint16_t)(block * NAND_PAGES_PER_BLOCK);
+    const uint8_t block_erase[] = {
+        NAND_CMD_BLOCK_ERASE,
+        0x00,
+        (uint8_t)(row >> 8),
+        (uint8_t)row,
+    };
+    result = nand_transfer(cs, block_erase, sizeof(block_erase), NULL, 0);
+    if (result != NAND_OK)
+        return result;
+
+    // 소거가 끝날 때까지 BUSY 해제를 기다림
+    result = nand_wait_ready(cs);
+    if (result != NAND_OK)
+        return result;
+
+    // C0h의 E-FAIL 비트로 소거 결과를 확인
+    result = nand_get_feature(cs, NAND_REG_STATUS, &status);
+    if (result != NAND_OK)
+        return result;
+    if ((status & NAND_STATUS_E_FAIL) != 0)
+        return NAND_ERR_ERASE_FAIL;
 
     return NAND_OK;
 }
