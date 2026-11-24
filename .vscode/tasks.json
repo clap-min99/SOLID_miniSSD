@@ -1,0 +1,20 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "jedec: build",
+      "type": "shell",
+      "command": "make",
+      "options": { "cwd": "${workspaceFolder}/firmware/bringup/jedec" },
+      "problemMatcher": "$gcc",
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "jedec: flash",
+      "type": "shell",
+      "command": "make flash",
+      "options": { "cwd": "${workspaceFolder}/firmware/bringup/jedec" },
+      "problemMatcher": []
+    }
+  ]
+}

@@ -21,6 +21,10 @@ solid_err_t ftl_alloc_page(bool for_gc, ppn_t *out);
 solid_err_t ftl_page_set_valid(ppn_t ppn);
 solid_err_t ftl_page_set_invalid(ppn_t ppn);
 
+/* GC 이동용: RESERVED Block의 가장 앞 유효 Page를 *ppn에. 없으면 INVALID_PPN.
+ * RESERVED가 아니면 ERR_FTL_BAD_STATE */
+solid_err_t ftl_victim_next_valid(uint8_t chip, uint16_t block, ppn_t *ppn);
+
 /* ppn이 속한 Block의 Correctable ECC 횟수를 1 올리고 새 값을 돌려준다 (범위 밖이면 0) */
 uint8_t ftl_block_note_ecc_corrected(ppn_t ppn);
 

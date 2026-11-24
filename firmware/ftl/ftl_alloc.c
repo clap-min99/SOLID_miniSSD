@@ -166,11 +166,9 @@ solid_err_t ftl_page_set_invalid(ppn_t ppn)
     return SOLID_OK;
 }
 
-solid_err_t ftl_get_block_info(uint8_t chip, uint16_t block, ftl_block_info_t *out)
+/* (chip, 칩 내 절대 block) → blocks[] 칸 */
+static solid_err_t find_block(uint8_t chip, uint16_t block, block_t **out)
 {
-    if (out == NULL) {
-        return ERR_FTL_INVALID_ARG;
-    }
     if (block_count == 0) {
         return ERR_FTL_NOT_READY;
     }
@@ -179,7 +177,20 @@ solid_err_t ftl_get_block_info(uint8_t chip, uint16_t block, ftl_block_info_t *o
     if (local >= FTL_ACTIVE_BLOCKS_PER_CHIP || idx >= block_count) {
         return ERR_FTL_RANGE;
     }
-    const block_t *b = &blocks[idx];
+    *out = &blocks[idx];
+    return SOLID_OK;
+}
+
+solid_err_t ftl_get_block_info(uint8_t chip, uint16_t block, ftl_block_info_t *out)
+{
+    block_t *b;
+    if (out == NULL) {
+        return ERR_FTL_INVALID_ARG;
+    }
+    solid_err_t e = find_block(chip, block, &b);
+    if (e != SOLID_OK) {
+        return e;
+    }
     out->state = (ftl_block_state_t)b->state;
     out->write_pointer = b->write_pointer;
     out->valid_pages = b->valid_pages;
@@ -191,6 +202,78 @@ solid_err_t ftl_get_block_info(uint8_t chip, uint16_t block, ftl_block_info_t *o
 uint16_t ftl_get_free_block_count(void)
 {
     return free_count;
+}
+
+/* from 상태인 Block을 to로. 아니면 ERR_FTL_BAD_STATE */
+static solid_err_t move_state(uint8_t chip, uint16_t block, uint8_t from, uint8_t to)
+{
+    block_t *b;
+    solid_err_t e = find_block(chip, block, &b);
+    if (e != SOLID_OK) {
+        return e;
+    }
+    if (b->state != from) {
+        return ERR_FTL_BAD_STATE;
+    }
+    b->state = to;
+    return SOLID_OK;
+}
+
+solid_err_t ftl_reserve_victim(uint8_t chip, uint16_t block)
+{
+    return move_state(chip, block, FTL_BLK_CLOSED, FTL_BLK_RESERVED);
+}
+
+solid_err_t ftl_unreserve_victim(uint8_t chip, uint16_t block)
+{
+    return move_state(chip, block, FTL_BLK_RESERVED, FTL_BLK_CLOSED);
+}
+
+solid_err_t ftl_victim_next_valid(uint8_t chip, uint16_t block, ppn_t *ppn)
+{
+    block_t *b;
+    solid_err_t e = find_block(chip, block, &b);
+    if (e != SOLID_OK) {
+        return e;
+    }
+    if (b->state != FTL_BLK_RESERVED) {
+        return ERR_FTL_BAD_STATE;
+    }
+    *ppn = INVALID_PPN;
+    for (uint8_t p = 0; p < NAND_PAGES_PER_BLOCK; p++) {
+        if (b->valid_map >> p & 1U) {
+            *ppn = idx_to_ppn((uint16_t)(b - blocks), p);
+            break;
+        }
+    }
+    return SOLID_OK;
+}
+
+solid_err_t ftl_reclaim_block(uint8_t chip, uint16_t block)
+{
+    block_t *b;
+    solid_err_t e = find_block(chip, block, &b);
+    if (e != SOLID_OK) {
+        return e;
+    }
+    if (b->state != FTL_BLK_RESERVED) {
+        return ERR_FTL_BAD_STATE;
+    }
+    if (b->valid_pages != 0) {
+        return ERR_FTL_VALID_REMAINS;
+    }
+    nand_result_t r = nand_erase_block(chip, block);
+    if (r == NAND_ERR_ERASE_FAIL || r == NAND_ERR_TIMEOUT) {
+        b->state = FTL_BLK_BAD;          /* 지워졌는지 모름 → 다시 안 씀 */
+        return ERR_NAND_ERASE_FAIL;
+    }
+    if (r != NAND_OK) {
+        return ftl_from_nand(r);         /* 상태 유지(RESERVED), GC가 CLOSED로 되돌림 */
+    }
+    uint32_t erases = b->erase_count + 1U;
+    *b = (block_t){ .state = FTL_BLK_FREE, .erase_count = erases };   /* 비트맵·wp·ECC 횟수 0 */
+    free_count++;
+    return SOLID_OK;
 }
 
 uint8_t ftl_block_note_ecc_corrected(ppn_t ppn)
