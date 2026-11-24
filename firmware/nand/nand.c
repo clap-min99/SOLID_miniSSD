@@ -146,7 +146,6 @@ timeout:
 enum
 {
     NAND_CMD_GET_FEATURE = 0x0F,
-    NAND_STATUS_BUSY = 1u << 0,
     NAND_READY_POLL_LIMIT = 128,
 };
 

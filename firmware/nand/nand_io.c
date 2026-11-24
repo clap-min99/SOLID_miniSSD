@@ -15,6 +15,20 @@ enum
     NAND_STATUS_ECC_MASK = 0x03u << NAND_STATUS_ECC_SHIFT,
 };
 
+// C0h의 ECC 비트 [5:4]를 페이지 읽기 결과로 변환
+static nand_ecc_t nand_decode_ecc(uint8_t status)
+{
+    switch ((status & NAND_STATUS_ECC_MASK) >> NAND_STATUS_ECC_SHIFT)
+    {
+    case 0:
+        return NAND_ECC_NO_ERROR;
+    case 1:
+        return NAND_ECC_CORRECTED;
+    default:
+        return NAND_ECC_UNCORRECTABLE;
+    }
+}
+
 // 지정한 물리 페이지의 메인 영역에 2KiB를 기록
 nand_result_t nand_program_page(nand_addr_t addr, const uint8_t *buffer)
 {
@@ -167,18 +181,9 @@ nand_result_t nand_read_page(nand_addr_t addr, uint8_t *buffer, nand_ecc_t *ecc)
     if (result != NAND_OK)
         return result;
 
-    switch ((status & NAND_STATUS_ECC_MASK) >> NAND_STATUS_ECC_SHIFT)
-    {
-    case 0:
-        *ecc = NAND_ECC_NO_ERROR;
-        break;
-    case 1:
-        *ecc = NAND_ECC_CORRECTED;
-        break;
-    default:
-        *ecc = NAND_ECC_UNCORRECTABLE;
+    *ecc = nand_decode_ecc(status);
+    if (*ecc == NAND_ECC_UNCORRECTABLE)
         return NAND_ERR_ECC_UNCORRECTABLE;
-    }
 
     // TODO: 버퍼 읽기 모드에서 Read Data(03h)로 Column 0부터 2KiB 수신
     const uint8_t read_data[] = {
@@ -245,5 +250,32 @@ nand_result_t nand_is_factory_bad_block(uint8_t chip, uint16_t block, bool *is_b
         return result;
 
     *is_bad = marker != 0xFFu;
+    return NAND_OK;
+}
+
+// 상태 레지스터 C0h에서 칩의 현재 상태를 조회
+nand_result_t nand_get_status(uint8_t chip, nand_status_t *status)
+{
+    // 칩 번호 범위와 결과 포인터를 확인
+    if (chip >= NAND_MAX_CHIPS || status == NULL)
+        return NAND_ERR_INVALID_ARG;
+
+    // BUSY 해제를 기다리지 않고 상태 레지스터를 한 번 읽음
+    nand_cs_t cs = nand_chip_select(chip);
+    uint8_t raw_status;
+    nand_result_t result = nand_get_feature(cs, NAND_REG_STATUS, &raw_status);
+    if (result != NAND_OK)
+        return result;
+
+    // 상태 비트를 구조체에 채우고 BUSY 중에는 ECC 판정을 보류
+    const bool busy = (raw_status & NAND_STATUS_BUSY) != 0;
+    *status = (nand_status_t){
+        .busy = busy,
+        .write_enabled = (raw_status & NAND_STATUS_WEL) != 0,
+        .program_failed = (raw_status & NAND_STATUS_P_FAIL) != 0,
+        .erase_failed = (raw_status & NAND_STATUS_E_FAIL) != 0,
+        .ecc = busy ? NAND_ECC_UNKNOWN : nand_decode_ecc(raw_status),
+    };
+
     return NAND_OK;
 }

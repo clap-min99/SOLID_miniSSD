@@ -10,6 +10,7 @@ enum
     NAND_CMD_SET_FEATURE = 0x1F,
     NAND_REG_STATUS = 0xC0,
     NAND_REG_CONFIGURATION = 0xB0,
+    NAND_STATUS_BUSY = 1u << 0,
 };
 
 typedef struct

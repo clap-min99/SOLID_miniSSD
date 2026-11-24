@@ -95,7 +95,7 @@ nand_result_t nand_is_factory_bad_block(
     bool *is_bad
 );
 
-/* Diagnostics */
+/* Read current status without waiting for ready. ECC is unknown while busy. */
 nand_result_t nand_get_status(
     uint8_t chip,
     nand_status_t *status
