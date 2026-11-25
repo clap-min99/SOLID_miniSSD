@@ -146,8 +146,48 @@ timeout:
 enum
 {
     NAND_CMD_GET_FEATURE = 0x0F,
+    NAND_REG_PROTECTION = 0xA0,
+    NAND_PROTECTION_BP_MASK = 0x78u, // BP[3:0] are bits [6:3].
     NAND_READY_POLL_LIMIT = 128,
 };
+
+nand_result_t nand_unlock_blocks(uint8_t chip)
+{
+    if (chip >= NAND_MAX_CHIPS)
+        return NAND_ERR_INVALID_ARG;
+    if (!nand_initialized)
+        return NAND_ERR_NOT_INITIALIZED;
+
+    nand_cs_t cs = nand_chip_select(chip);
+    nand_result_t result = nand_wait_ready(cs);
+    if (result != NAND_OK)
+        return result;
+
+    uint8_t protection;
+    result = nand_get_feature(cs, NAND_REG_PROTECTION, &protection);
+    if (result != NAND_OK)
+        return result;
+    if ((protection & NAND_PROTECTION_BP_MASK) == 0)
+        return NAND_OK;
+
+    // Preserve the protection mode and lock settings when clearing BP[3:0].
+    const uint8_t command[] = {
+        NAND_CMD_SET_FEATURE,
+        NAND_REG_PROTECTION,
+        (uint8_t)(protection & ~NAND_PROTECTION_BP_MASK),
+    };
+    result = nand_transfer(cs, command, sizeof(command), NULL, 0);
+    if (result != NAND_OK)
+        return result;
+
+    result = nand_wait_ready(cs);
+    if (result != NAND_OK)
+        return result;
+    result = nand_get_feature(cs, NAND_REG_PROTECTION, &protection);
+    if (result != NAND_OK)
+        return result;
+    return (protection & NAND_PROTECTION_BP_MASK) == 0 ? NAND_OK : NAND_ERR_WRITE_PROTECTED;
+}
 
 // 명령과 데이터를 전송하는 동안 CS를 LOW로 유지
 static nand_result_t nand_transaction(nand_cs_t cs, const uint8_t *command,
