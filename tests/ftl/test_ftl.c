@@ -3,10 +3,20 @@
 #include <string.h>
 #include "ftl.h"
 #include "ftl_alloc.h"
+#include "ftl_bbt.h"
 #include "ftl_map.h"
 
-/* ---- 가짜 NAND: 칩 1개 관리 영역(24 Block)을 메모리에 둔다 (Mock NAND가 develop에 들어오면 교체) ---- */
-#define FAKE_BLOCKS FTL_ACTIVE_BLOCKS_PER_CHIP
+/* ---- 가짜 NAND: 칩 1개 관리 영역(24 Block) + BBT 후보 Block을 메모리에 둔다 ---- */
+#define FAKE_BLOCKS (FTL_ACTIVE_BLOCKS_PER_CHIP + FTL_BBT_CANDIDATES)
+/* 관리 영역은 그대로, BBT 후보(1023, 1022, ...)는 뒤 칸에 */
+static uint16_t slot(uint16_t block)
+{
+    if (block < FTL_ACTIVE_BLOCKS_PER_CHIP) {
+        return block;
+    }
+    assert(block > FTL_BBT_FIRST_CANDIDATE - FTL_BBT_CANDIDATES && block <= FTL_BBT_FIRST_CANDIDATE);
+    return (uint16_t)(FTL_ACTIVE_BLOCKS_PER_CHIP + FTL_BBT_FIRST_CANDIDATE - block);
+}
 static uint8_t       store[FAKE_BLOCKS][NAND_PAGES_PER_BLOCK][NAND_PAGE_SIZE];
 static bool          written[FAKE_BLOCKS][NAND_PAGES_PER_BLOCK];
 static int           program_fails;                 /* 다음 N번 Program을 PROGRAM_FAIL로 */
@@ -24,6 +34,7 @@ nand_result_t nand_is_factory_bad_block(uint8_t chip, uint16_t block, bool *is_b
 nand_result_t nand_erase_block(uint8_t chip, uint16_t block)
 {
     (void)chip;
+    block = slot(block);
     memset(store[block], 0xFF, sizeof store[block]);
     memset(written[block], 0, sizeof written[block]);
     return NAND_OK;
@@ -32,7 +43,8 @@ nand_result_t nand_erase_block(uint8_t chip, uint16_t block)
 nand_result_t nand_program_page(nand_addr_t a, const uint8_t *buf)
 {
     program_calls++;
-    assert(a.chip == 0 && a.block < FAKE_BLOCKS);
+    assert(a.chip == 0);
+    a.block = slot(a.block);
     assert(!written[a.block][a.page]);   /* 같은 Page 두 번 쓰기 = FTL 버그 */
     written[a.block][a.page] = true;     /* 실패해도 그 Page는 다시 못 씀 */
     if (program_fails > 0) {
@@ -48,7 +60,8 @@ nand_result_t nand_program_page(nand_addr_t a, const uint8_t *buf)
 
 nand_result_t nand_read_page(nand_addr_t a, uint8_t *buf, nand_ecc_t *ecc)
 {
-    assert(a.chip == 0 && a.block < FAKE_BLOCKS);
+    assert(a.chip == 0);
+    a.block = slot(a.block);
     memcpy(buf, store[a.block][a.page], NAND_PAGE_SIZE);
     *ecc = read_ecc;
     return NAND_OK;

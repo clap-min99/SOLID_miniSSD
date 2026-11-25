@@ -2,7 +2,7 @@
 #include <stdio.h>
 #include "ftl_alloc.h"
 
-/* ---- 가짜 NAND: ftl_alloc이 쓰는 두 함수만 (Mock NAND가 develop에 들어오면 교체) ---- */
+/* ---- 가짜 NAND: ftl_alloc / ftl_bbt가 쓰는 함수만 ---- */
 static bool          factory_bad[NAND_MAX_CHIPS][NAND_BLOCKS_PER_CHIP];
 static nand_result_t erase_res[NAND_MAX_CHIPS][NAND_BLOCKS_PER_CHIP];
 static nand_result_t bad_query_res = NAND_OK;
@@ -19,8 +19,27 @@ nand_result_t nand_is_factory_bad_block(uint8_t chip, uint16_t block, bool *is_b
 
 nand_result_t nand_erase_block(uint8_t chip, uint16_t block)
 {
-    erase_calls++;
+    if (block < FTL_ACTIVE_BLOCKS_PER_CHIP) {   /* BBT Block Erase는 세지 않음 */
+        erase_calls++;
+    }
     return erase_res[chip][block];
+}
+
+/* BBT용: 저장은 버리고 읽으면 빈 Page → 매번 처음 부팅으로 동작. BBT 자체는 test_ftl_bbt.c */
+nand_result_t nand_read_page(nand_addr_t a, uint8_t *buf, nand_ecc_t *ecc)
+{
+    (void)a;
+    for (uint32_t i = 0; i < NAND_PAGE_SIZE; i++) {
+        buf[i] = 0xFF;
+    }
+    *ecc = NAND_ECC_NO_ERROR;
+    return NAND_OK;
+}
+
+nand_result_t nand_program_page(nand_addr_t a, const uint8_t *buf)
+{
+    (void)a; (void)buf;
+    return NAND_OK;
 }
 
 static ftl_block_info_t info(uint8_t chip, uint16_t block)

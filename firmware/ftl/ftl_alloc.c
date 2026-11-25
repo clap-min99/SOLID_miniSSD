@@ -1,4 +1,5 @@
 #include "ftl_alloc.h"
+#include "ftl_bbt.h"
 
 #define BLOCKS_MAX (NAND_MAX_CHIPS * FTL_ACTIVE_BLOCKS_PER_CHIP)  /* 192 */
 
@@ -63,6 +64,15 @@ solid_err_t ftl_alloc_init(uint8_t chip_count)
     free_count = 0;
     open_idx = -1;
 
+    /* BBT가 있으면 그걸 믿고, 없으면(처음 부팅) 공장 마커를 검사해 BBT를 만든다.
+     * 데이터를 쓴 Block은 Main[0]이 FF가 아니라서 공장 검사를 다시 하면 BAD로 오판된다 */
+    bool have_bbt;
+    solid_err_t e = ftl_bbt_load(&have_bbt);
+    if (e != SOLID_OK) {
+        return e;
+    }
+    bool dirty = !have_bbt;
+
     uint16_t n = (uint16_t)(chip_count * FTL_ACTIVE_BLOCKS_PER_CHIP);
     for (uint16_t i = 0; i < n; i++) {
         uint8_t  chip  = (uint8_t)(i / FTL_ACTIVE_BLOCKS_PER_CHIP);
@@ -71,17 +81,28 @@ solid_err_t ftl_alloc_init(uint8_t chip_count)
         bool bad = false;
 
         *b = (block_t){ .state = FTL_BLK_BAD };
-        nand_result_t r = nand_is_factory_bad_block(chip, block, &bad);
-        if (r != NAND_OK) {
-            return ftl_from_nand(r);
+        if (have_bbt) {
+            bad = ftl_bbt_is_bad(chip, block);
+        } else {
+            nand_result_t r = nand_is_factory_bad_block(chip, block, &bad);
+            if (r != NAND_OK) {
+                return ftl_from_nand(r);
+            }
+            if (bad && (e = ftl_bbt_add(chip, block)) != SOLID_OK) {
+                return e;
+            }
         }
         if (bad) {
             continue;
         }
-        /* ponytail: 영속화 전이라 부팅마다 관리 영역을 전부 Erase(포맷). 복원이 생기면 여기서 대신 복원 */
-        r = nand_erase_block(chip, block);
+        /* ponytail: 체크포인트 전이라 부팅마다 관리 영역을 전부 Erase(포맷). 복원이 생기면 여기서 대신 복원 */
+        nand_result_t r = nand_erase_block(chip, block);
         if (r == NAND_ERR_ERASE_FAIL || r == NAND_ERR_TIMEOUT) {
-            continue;   /* 지워졌는지 모르는 Block은 BAD */
+            if ((e = ftl_bbt_add(chip, block)) != SOLID_OK) {   /* 지워졌는지 모르는 Block은 BAD */
+                return e;
+            }
+            dirty = true;
+            continue;
         }
         if (r != NAND_OK) {
             return ftl_from_nand(r);
@@ -89,6 +110,9 @@ solid_err_t ftl_alloc_init(uint8_t chip_count)
         b->state = FTL_BLK_FREE;
         b->erase_count = 1;
         free_count++;
+    }
+    if (dirty && (e = ftl_bbt_save()) != SOLID_OK) {
+        return e;
     }
     block_count = n;
     return SOLID_OK;
@@ -265,6 +289,11 @@ solid_err_t ftl_reclaim_block(uint8_t chip, uint16_t block)
     nand_result_t r = nand_erase_block(chip, block);
     if (r == NAND_ERR_ERASE_FAIL || r == NAND_ERR_TIMEOUT) {
         b->state = FTL_BLK_BAD;          /* 지워졌는지 모름 → 다시 안 씀 */
+        /* 재부팅 후에도 빼도록 BBT에 기록. 실패해도 GC 계약대로 ERASE_FAIL을 돌려준다
+         * ponytail: BBT 저장 실패는 이번 부팅 동안만 BAD로 남음. 알려야 하면 별도 카운터 추가 */
+        if (ftl_bbt_add(chip, block) == SOLID_OK) {
+            (void)ftl_bbt_save();
+        }
         return ERR_NAND_ERASE_FAIL;
     }
     if (r != NAND_OK) {
