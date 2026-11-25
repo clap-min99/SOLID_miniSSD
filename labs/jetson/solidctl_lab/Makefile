@@ -1,0 +1,1 @@
+obj-m := solidctl_lab.o
