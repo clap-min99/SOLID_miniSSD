@@ -2,6 +2,7 @@
 #define PROTOCOL_H
 
 #include <stdint.h>
+#include "../firmware/common/solid_types.h"
 
 // 프로토콜 기본 설정
 #define SSD_LBA_SIZE    2048U // 논리블록 하나 크기
@@ -18,36 +19,7 @@ typedef enum {
 } SSD_Op;
 
 // 명령 처리 결과 및 오류 코드
-typedef enum {
-    SOLID_OK                                    = 0x00,
-
-    /* FTL 응답 */
-    ERR_FTL_INVALID_ARG                = 0x10,
-    ERR_FTL_RANGE                          = 0x11,
-    ERR_FTL_NOT_READY                  = 0x12,
-    ERR_FTL_UNMAPPED                   = 0x13,
-    ERR_FTL_NO_SPACE                    = 0x14,
-    ERR_FTL_NOT_SUPPORTED          = 0x19,
-    ERR_FTL_FLUSH_FAIL                  = 0x1A,
-    ERR_FTL_NO_META                      = 0x1B,
-    ERR_FTL_META_CORRUPT            = 0x1C,
-    ERR_FTL_INTERNAL                     = 0x1F,
-
-    /* NAND 응답 */
-    ERR_NAND_NOT_INITIALIZED        = 0x30,
-    ERR_NAND_NO_DEVICE                 = 0x31,
-    ERR_NAND_IO                               = 0x32,
-    ERR_NAND_TIMEOUT                     = 0x33,
-    ERR_NAND_WRITE_PROTECTED     = 0x34,
-    ERR_NAND_PROGRAM_FAIL           = 0x35,
-    ERR_NAND_ECC_UNCORRECTABLE = 0x37,
-
-    /* HIL 요청 검사 응답 */
-    ERR_HIL_BAD_COMMAND               = 0x40,
-    ERR_HIL_BAD_LENGTH                  = 0x41,
-    ERR_HIL_BAD_VERSION                 = 0x42,
-    ERR_HIL_BAD_FIELD                      = 0x43,
-} SSD_Status;
+typedef solid_err_t SSD_Status;
 
 // 명령 헤더
 typedef struct {

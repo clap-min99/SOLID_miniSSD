@@ -3,8 +3,7 @@
 
 #include <stdbool.h>
 #include "address_mapper.h"
-
-#define FTL_LOGICAL_PAGE_COUNT 8192U /* 16MiB / 2KiB */
+#include "ftl.h"
 
 /* L2P table is private; only these calls touch it. */
 void ftl_map_init(void);                      /* every entry -> INVALID_PPN */

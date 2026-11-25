@@ -8,7 +8,7 @@
  * - NAND 드라이버는 nand.h의 nand_result_t(NAND_ERR_*)를 그대로 쓰고,
  *   FTL이 상위로 올릴 때 ERR_NAND_*로 바꾼다 (docs/ftl-agreement.md 4-2 변환표).
  * - 값은 로그·Host 전달에 쓰이므로 한번 정하면 바꾸지 않는다. 새 코드는 각 구간 끝에 추가.
- *   0x00 성공 / 0x10~ FTL / 0x20~ GC / 0x30~ NAND
+ *   0x00 성공 / 0x10~ FTL / 0x20~ GC / 0x30~ NAND / 0x40~ HIL
  */
 typedef enum {
     SOLID_OK                  = 0x00,
@@ -45,7 +45,13 @@ typedef enum {
     ERR_NAND_PROGRAM_FAIL     = 0x35, /* NAND_ERR_PROGRAM_FAIL */
     ERR_NAND_ERASE_FAIL       = 0x36, /* NAND_ERR_ERASE_FAIL: 해당 Block은 BAD 처리됨 */
     ERR_NAND_ECC_UNCORRECTABLE = 0x37, /* 정정 불가 ECC */
-    ERR_NAND_BAD_BLOCK        = 0x38  /* Bad Block 접근 */
+    ERR_NAND_BAD_BLOCK        = 0x38, /* Bad Block 접근 */
+
+    /* HIL */
+    ERR_HIL_BAD_COMMAND       = 0x40,
+    ERR_HIL_BAD_LENGTH        = 0x41,
+    ERR_HIL_BAD_VERSION       = 0x42,
+    ERR_HIL_BAD_FIELD         = 0x43,
 } solid_err_t;
 
 #endif /* SOLID_TYPES_H */
