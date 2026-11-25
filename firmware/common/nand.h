@@ -65,6 +65,9 @@ nand_result_t nand_probe(
     uint8_t chip
 );
 
+/* Clear and verify the block protection bits after a successful probe. */
+nand_result_t nand_unlock_blocks(uint8_t chip);
+
 nand_result_t nand_get_geometry(
     uint8_t chip,
     nand_geometry_t *geometry

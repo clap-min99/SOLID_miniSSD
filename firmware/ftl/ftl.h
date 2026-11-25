@@ -4,6 +4,8 @@
 #include <stdint.h>
 #include "solid_types.h"
 
+#define FTL_LOGICAL_PAGE_COUNT 8192U /* 16MiB / 2KiB */
+
 /* HIL이 부르는 FTL 진입점 (FTL-03~06). buf는 항상 2KiB(NAND_PAGE_SIZE) */
 
 /* L2P와 Block 표를 초기화. chip_count = 실제 연결된 NAND 수 */
